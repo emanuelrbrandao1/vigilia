@@ -1,8 +1,8 @@
 # Vigília
 
-Um aplicativo para Windows que ajuda a organizar o tempo em sites. Você configura as regras em um painel local, e a extensão aplica os limites no Chrome e no Edge.
+O Vigília cria uma barreira inicial mínima às distrações digitais: uma pequena pausa entre o impulso de abrir um site e a decisão de acessá-lo. O objetivo é aumentar a produtividade e o rendimento, além de ter mais tempo disponível para a vida real.
 
-Por exemplo: permitir 20 minutos de um site entre 13h e 18h30 e deixar o acesso livre fora dessa faixa. A contagem considera a aba ativa com o navegador em primeiro plano.
+Você define os horários, as cotas de uso e os períodos de foco que fazem sentido para sua rotina em um painel no Windows. A extensão aplica os limites no Chrome e no Edge, contando o tempo na aba ativa com o navegador em primeiro plano.
 
 ![Painel do Vigília com regras e histórico fictícios](docs/painel-demo.png)
 
