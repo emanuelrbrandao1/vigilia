@@ -1,0 +1,93 @@
+using System;
+using System.Linq;
+namespace FocoLocal {
+ public static class ChangeTests {
+  static int count;static void Check(bool good,string name){if(!good)throw new Exception("FAIL: "+name);count++;Console.WriteLine("OK: "+name);}
+  static Rule Q(){return new Rule{name="Work",domains=new[]{"example.com"},always=false,windowQuota=true,minutes=20,start=780,end=1110,days=127};}
+  public static int Run(){
+   var utc=new DateTime(2026,10,26,14,0,0,DateTimeKind.Local).ToUniversalTime();var old=Q();var next=Changes.Copy(old);
+   Check(!Changes.Freer(old,next,utc),"Unchanged rule is immediate");next.name="Rename";Check(!Changes.Freer(old,next,utc),"Rename is immediate");
+   next.minutes=10;Check(!Changes.Freer(old,next,utc),"Reducing window quota is immediate");next.minutes=21;Check(Changes.Freer(old,next,utc),"Increasing quota waits");
+   next=Changes.Copy(old);next.start=720;next.end=1200;Check(!Changes.Freer(old,next,utc),"Expanding quota window is restrictive");
+   next=Changes.Copy(old);next.start=840;Check(Changes.Freer(old,next,utc),"Shrinking quota window frees time and waits");
+   next=Changes.Copy(old);next.start+=60;next.end+=60;Check(Changes.Freer(old,next,utc),"Mixed shift freeing one edge waits");
+   next=Changes.Copy(old);next.days=31;Check(Changes.Freer(old,next,utc),"Removing quota days waits");old.days=31;next=Changes.Copy(old);next.days=127;Check(!Changes.Freer(old,next,utc),"Adding quota days is immediate");
+   old=Q();old.windowQuota=false;old.blockWindow=true;old.minutes=0;next=Changes.Copy(old);next.start=720;Check(!Changes.Freer(old,next,utc),"Longer work block is immediate");next.start=840;Check(Changes.Freer(old,next,utc),"Shorter work block waits");
+   old.blockWindow=false;next=Changes.Copy(old);next.start=840;Check(!Changes.Freer(old,next,utc),"Shorter permitted hours is immediate");next.start=720;Check(Changes.Freer(old,next,utc),"Longer permitted hours waits");
+   old=Q();old.start=1320;old.end=360;next=Changes.Copy(old);next.start=1260;next.end=420;Check(!Changes.Freer(old,next,utc),"Wider overnight quota is restrictive");next.start=1380;Check(Changes.Freer(old,next,utc),"Overnight shift frees previous evening");
+   old=Q();next=Changes.Copy(old);next.domains=new[]{"sub.example.com"};Check(Changes.Freer(old,next,utc),"Narrower domain coverage waits");old.domains=new[]{"sub.example.com"};next.domains=new[]{"example.com"};Check(!Changes.Freer(old,next,utc),"Broader domain block is immediate");
+   old=Q();next=Changes.Copy(old);next.always=true;next.windowQuota=false;Check(!Changes.Freer(old,next,utc),"Switching to always blocked is immediate");Check(Changes.Freer(next,old,utc),"Leaving permanent block waits");
+   old=Q();old.windowQuota=false;old.start=old.end=0;next=Changes.Copy(old);next.minutes=0;Check(Changes.Freer(old,next,utc),"Zero removes daily cap and waits");old.minutes=0;next.minutes=20;Check(!Changes.Freer(old,next,utc),"Unlimited to daily cap is immediate");
+   old=Q();old.start=0;old.end=0;next=Changes.Copy(old);next.windowQuota=false;Check(!Changes.Freer(old,next,utc),"Equivalent full-day quota mode is immediate");
+   old=Q();old.start=1320;old.end=360;next=Changes.Copy(old);next.windowQuota=false;next.start=0;next.end=0;next.minutes=20;Check(Changes.Freer(old,next,utc),"Daily quota can allow twice overnight allowance across midnight");
+   next.minutes=10;Check(!Changes.Freer(old,next,utc),"Two daily buckets totaling old overnight allowance is restrictive");
+   var s=new State();old=Q();s.rules.Add(old);next=Changes.Copy(old);next.minutes=40;var p=Changes.Save(s,next,utc);
+   Check(p!=null&&s.rules[0].minutes==20&&p.executeAt==Engine.Stamp(utc.AddHours(24)),"Relaxation queued without altering live rule");
+   Check(Changes.Save(s,next,utc.AddHours(1)).executeAt==p.executeAt,"Identical queued request keeps its deadline");next.minutes=50;var replacement=Changes.Save(s,next,utc.AddHours(2));Check(replacement.executeAt==Engine.Stamp(utc.AddHours(26))&&s.pendingChanges.Count==1,"Different proposal starts fresh 24h wait");
+   var saved=Store.Json.Deserialize<State>(Store.Json.Serialize(s));Check(saved.pendingChanges.Count==1&&saved.pendingChanges[0].target.minutes==50,"Pending edit survives persistence");
+   Check(!Changes.ApplyDue(saved,utc.AddHours(26).AddMilliseconds(-1))&&saved.rules[0].minutes==20,"Queued rule stays blocked before exact deadline");
+   Check(Changes.ApplyDue(saved,utc.AddHours(26))&&saved.rules[0].minutes==50&&saved.pendingChanges.Count==0,"Queued edit applies at exact UTC deadline");
+   next.minutes=10;Check(Changes.Save(s,next,utc.AddHours(3))==null&&s.rules[0].minutes==10&&s.pendingChanges.Count==0,"Tightening applies now and cancels stale relaxation");
+   Changes.Delete(s,old.id,utc.AddHours(4));Check(s.rules.Count==1&&s.pendingChanges[0].kind=="delete","Active deletion waits");Engine.StartFocus(s,new[]{old.id},120,utc.AddHours(5));Check(s.pendingChanges.Count==0,"Starting focus cancels pending weakening");
+   Changes.Archive(s,old.id,utc.AddHours(6));Check(!s.rules[0].archived,"Archive waits while active");Changes.ApplyDue(s,utc.AddHours(30));Check(s.rules[0].archived,"Archive applies after 24h");
+   Check(Changes.Archive(s,old.id,utc.AddHours(31))==null&&!s.rules[0].archived,"Reactivation immediate");
+   old=new Rule{name="Free",domains=new[]{"free.test"},always=false,minutes=0,start=0,end=0};s=new State();s.rules.Add(old);Check(Changes.Archive(s,old.id,utc)==null&&old.archived,"Archiving already unrestricted rule is immediate");
+   Check(Changes.Delete(s,old.id,utc)==null&&s.rules.Count==0,"Deleting archived rule is immediate");
+   old=new Rule{name="Unrestricted",domains=new[]{"example.com"},always=false,minutes=0,start=0,end=0};s=new State();s.rules.Add(old);next=Changes.Copy(old);next.domains=new[]{"other.test"};next.always=true;
+   Check(Changes.Save(s,next,utc)==null&&s.rules[0].always&&s.rules[0].domains[0]=="other.test","Reviewer regression: replace unrestricted domain with new block immediately");
+   s=new State();old=Q();s.rules.Add(old);s.day=utc.ToLocalTime().ToString("yyyy-MM-dd");s.windowUsage[Engine.WindowKey(old,utc.ToLocalTime().Date)]=600;next=Changes.Copy(old);next.start=1320;next.end=1110;
+   Check(Changes.Save(s,next,utc)==null&&Engine.WindowUsed(s.rules[0],s,utc.ToLocalTime())==600,"Restrictive overnight change carries consumed quota to new date key");
+   s=new State();old=Q();s.rules.Add(old);next=Changes.Copy(old);next.minutes=40;next.domains=new[]{"example.com","other.test"};Changes.Save(s,next,utc);
+   bool collision=false;try{Changes.Save(s,new Rule{name="Conflicting",domains=new[]{"other.test"}},utc);}catch{collision=true;}Check(collision,"Pending domains reserved against conflicting new rules");
+   s=new State();old=new Rule{name="Pause",domains=new[]{"example.com"}};s.rules.Add(old);Engine.RequestPause(s,old,utc);old.always=false;old.minutes=1;next=Changes.Copy(old);next.always=true;Changes.Save(s,next,utc.AddMinutes(31));Check(!Engine.Paused(s,s.rules[0],utc.AddMinutes(32)),"Tightening permanent block cannot inherit old active pause");
+   Check(Store.Json.Deserialize<State>("{\"version\":4}").pendingChanges!=null,"Version 4 initializes pending list");
+   var oneAm=new DateTime(2026,10,27,1,0,0,DateTimeKind.Local).ToUniversalTime();s=new State();old=Q();old.start=1320;old.end=360;s.rules.Add(old);s.day=oneAm.ToLocalTime().ToString("yyyy-MM-dd");s.windowUsage[Engine.WindowKey(old,oneAm.ToLocalTime().Date.AddDays(-1))]=1200;next=Changes.Copy(old);next.windowQuota=false;next.start=next.end=0;next.minutes=10;
+   Check(Changes.Save(s,next,oneAm)==null&&s.usage[old.id]==1200&&Engine.Reason(s.rules[0],s,oneAm.ToLocalTime())=="Limite diário atingido","Reviewer regression: overnight debt survives switch to daily quota after midnight");
+   var late=new DateTime(2026,10,26,23,59,0,DateTimeKind.Local).ToUniversalTime();s=new State();old=new Rule{name="Daily",domains=new[]{"example.com"},always=false,minutes=100,start=0,end=0};s.rules.Add(old);s.day=late.ToLocalTime().ToString("yyyy-MM-dd");s.usage[old.id]=6000;next=Changes.Copy(old);next.windowQuota=true;next.minutes=1;next.end=1439;
+   Check(!Changes.Freer(old,next,late)&&Changes.Save(s,next,late)!=null,"Reviewer regression: theoretically tighter quota cannot free exhausted historical budget");
+   s=new State();old=Q();old.start=1320;old.end=360;s.rules.Add(old);s.day=late.ToLocalTime().ToString("yyyy-MM-dd");s.usage[old.id]=1200;s.windowUsage[Engine.WindowKey(old,late.ToLocalTime().Date)]=1200;next=Changes.Copy(old);next.windowQuota=false;next.start=next.end=0;next.minutes=10;
+   Check(Changes.Save(s,next,late)!=null,"Midnight reset under new daily quota cannot replenish exhausted overnight quota");
+   s=new State();old=Q();s.rules.Add(old);s.day=utc.ToLocalTime().ToString("yyyy-MM-dd");s.windowUsage[Engine.WindowKey(old,utc.ToLocalTime().Date)]=1200;next=Changes.Copy(old);next.minutes=10;Check(Changes.Save(s,next,utc)==null,"Reducing exhausted quota remains immediate");double stamp=Engine.Stamp(utc);Engine.Charge(s,"example.com",stamp,stamp+1,utc.AddSeconds(1));Check(Engine.WindowUsed(s.rules[0],s,utc.ToLocalTime())==1200,"Reducing cap never decreases recorded consumption on next foreground sample");
+   s=new State();old=new Rule{name="Paused group",domains=new[]{"example.com"}};s.rules.Add(old);Engine.RequestPause(s,old,utc);next=Changes.Copy(old);next.domains=new[]{"example.com","other.test"};Check(Changes.Save(s,next,utc.AddMinutes(31))==null&&!Engine.Paused(s,s.rules[0],utc.AddMinutes(32)),"Astra regression: widening a paused permanent group blocks new domains immediately");
+   s=new State();old=Q();old.start=720;old.end=780;old.minutes=60;s.rules.Add(old);next=Changes.Copy(old);next.domains=new[]{"other.test"};Check(Changes.Save(s,next,utc)==null,"Astra regression: quota equal to its window is effectively unrestricted");
+   s=new State();old=new Rule{name="Full day",domains=new[]{"example.com"},always=false,minutes=1440,start=0,end=0};s.rules.Add(old);next=Changes.Copy(old);next.domains=new[]{"other.test"};Check(Changes.Save(s,next,utc)==null,"Astra regression: full-day 1440-minute cap does not impose cooldown on domain swap");
+   s=new State();old=new Rule{name="Recoverable",domains=new[]{"example.com"}};s.rules.Add(old);var intent=PauseRecovery.Prepare(s,old,utc);var persisted=Store.Json.Deserialize<State>(Store.Json.Serialize(s));Check(persisted.pauses[0].confirmationPending&&!Engine.Paused(persisted,old,utc.AddMinutes(31)),"Unconfirmed persisted intent never releases extension");
+   var guard=new GuardState();var accepted=GuardHosts.Request(guard,new GuardRequest{id=intent.id,domains=intent.domains},utc);var retry=PauseRecovery.Prepare(persisted,old,utc.AddMinutes(1));Check(retry.id==accepted.id&&GuardHosts.Request(guard,new GuardRequest{id=retry.id,domains=retry.domains},utc.AddMinutes(1)).startsAt==accepted.startsAt,"Lost service response retries same durable id and does not duplicate or postpone pause");
+   PauseRecovery.Merge(persisted,guard.pauses);Check(!persisted.pauses[0].confirmationPending&&Engine.Paused(persisted,old,utc.AddMinutes(31)),"Service status recovers confirmed pause after local save failure");
+   persisted.pauses[0].cancelRequested=true;PauseRecovery.Merge(persisted,guard.pauses);Check(persisted.pauses[0].cancelRequested&&!Engine.Paused(persisted,old,utc.AddMinutes(31)),"Cancellation intention survives reconciliation and keeps extension blocked");accepted.cancelled=true;PauseRecovery.Merge(persisted,guard.pauses);Check(persisted.pauses[0].cancelled&&!persisted.pauses[0].cancelRequested,"Remote cancellation completes local pending cancel");
+   var recovered=new State();PauseRecovery.Merge(recovered,guard.pauses);Check(recovered.pauses.Count==1&&recovered.pauses[0].id==accepted.id,"Service reconciliation can recover a completely missing local record");
+   var domains=Enumerable.Range(0,29).Select(i=>"domain"+i+".test").Concat(new[]{"x.com"}).ToArray();var expanded=Engine.PauseDomains(domains);Check(expanded.Length==31&&GuardHosts.Request(new GuardState(),new GuardRequest{id=Guid.NewGuid().ToString("N"),domains=expanded},utc)!=null,"Canonical X/Twitter expansion preserves valid 30-domain pause requests");
+   var stale=GuardWire.Json.Deserialize<Pause>(GuardWire.Json.Serialize(accepted));stale.cancelled=false;PauseRecovery.Merge(persisted,new[]{stale});Check(persisted.pauses[0].cancelled&&!Engine.Paused(persisted,old,utc.AddMinutes(31)),"Astra regression: stale service snapshot never resurrects confirmed cancellation");
+   s=new State();old=new Rule{name="Status",domains=new[]{"example.com"}};s.rules.Add(old);Engine.RequestPause(s,old,utc);old.pauseSuppressedUntil=Engine.Stamp(utc.AddMinutes(40));Check(Engine.PauseStatus(s,old,utc.AddMinutes(31)).Contains("não libera"),"Suppressed pause status does not announce access");old.pauseSuppressedUntil=0;old.focusUntil=Engine.Stamp(utc.AddHours(2));Check(Engine.PauseStatus(s,old,utc.AddMinutes(31)).Contains("estudo"),"Study status takes priority over an active pause");
+   s=new State();var day0=new DateTime(2026,11,2,10,0,0,DateTimeKind.Local);Check(Streak.Ensure(s,day0)&&Streak.Current(s,day0)==1&&!Streak.Ensure(s,day0),"Streak starts today and initializes once");
+   Check(Streak.Current(s,day0.AddDays(3))==4,"Streak counts every clean local day including today");
+   var blockedRule=new Rule{name="Blocked",domains=new[]{"example.com"}};var quotaRule=Q();quotaRule.domains=new[]{"quota.test"};quotaRule.start=quotaRule.end=0;s.rules.Add(blockedRule);s.rules.Add(quotaRule);
+   var day3=day0.AddDays(3).ToUniversalTime();double t=Engine.Stamp(day3);Engine.Charge(s,"quota.test",t,t+2,day3);Check(s.usage[quotaRule.id]>0&&Streak.Current(s,day0.AddDays(3))==4,"Quota usage does not break the streak");
+   Engine.Charge(s,"example.com",t+2,t+4,day3);Check(Streak.Current(s,day0.AddDays(3))==4&&s.streakLapses.Count==0,"Blocked site without pause records no use");
+   Engine.RequestPause(s,blockedRule,day3);double open=t+31*60;Engine.Charge(s,"example.com",open,open+2,day3.AddMinutes(31));Check(Streak.Current(s,day0.AddDays(3))==0&&s.streakBest==3&&s.streakLapses.Count==1,"Using a permanently blocked site during a pause resets the streak and keeps the record");
+   Check(Streak.DayKind(s.streakTracking,s.streakDayKinds,day0.AddDays(3))==Streak.WithinPause,"Allowed 10-minute pause usage is gray, not red");
+   Check(Streak.Current(s,day0.AddDays(4))==1&&Streak.Best(s,day0.AddDays(4))==3,"New streak starts the next day");
+   Streak.Lapse(s,day0.AddDays(4));Streak.Lapse(s,day0.AddDays(4));Check(s.streakLapses.Count==2&&Streak.Current(s,day0.AddDays(4))==0&&s.streakBest==3,"Manual record is idempotent and never lowers the record");
+   s.day=day0.AddDays(4).ToString("yyyy-MM-dd");Streak.Lapse(s,day0.AddDays(1));Check(s.streakLapses.Count==2&&s.streakStart==day0.AddDays(5).ToString("yyyy-MM-dd")&&Streak.Current(s,day0.AddDays(-5))==0,"Clock moved backwards cannot restart or inflate the streak");
+   var back=new State();Streak.Ensure(back,day0);back.day=day0.AddDays(9).ToString("yyyy-MM-dd");Streak.Lapse(back,day0.AddDays(2));Check(back.streakStart==day0.AddDays(10).ToString("yyyy-MM-dd")&&back.streakLapses.Contains(day0.AddDays(9).ToString("yyyy-MM-dd"))&&back.streakBest==9,"Setting the clock back cannot dodge a lapse");
+   s=new State();s.streakStart="corrompido";s.streakLapses=null;Check(Streak.Current(s,day0)==1&&s.streakLapses!=null,"Invalid streak data recovers safely");
+   s=new State();Streak.Ensure(s,day0);
+   Check(Streak.DayKind(s.streakTracking,s.streakDayKinds,day0)==Streak.NoUse&&Streak.DayKind(s.streakTracking,s.streakDayKinds,day0.AddDays(-1))==Streak.Untracked,"Today without use is green; days before tracking are unfilled");
+   Streak.Record(s,day0,true,true);Check(s.streakDayKinds[day0.ToString("yyyy-MM-dd")]==Streak.WithinPause&&Streak.Current(s,day0)==0,"Manual within-pause record is gray and preserves no-use streak semantics");
+   Streak.Record(s,day0,false,true);Streak.Record(s,day0,true);Streak.Record(s,day0,true,true);Check(s.streakDayKinds[day0.ToString("yyyy-MM-dd")]==Streak.OutsidePause,"Outside use wins over later automatic or manual allowed use");
+   s.day=day0.AddDays(1).ToString("yyyy-MM-dd");Streak.Record(s,day0,true);Check(s.streakDayKinds[s.day]==Streak.WithinPause,"Usage classification follows monotonic local date");
+   var migrated=new State{version=6,streakLapses=new System.Collections.Generic.List<string>{day0.ToString("yyyy-MM-dd")}};Streak.Ensure(migrated,day0);
+   Check(migrated.streakDayKinds[day0.ToString("yyyy-MM-dd")]==Streak.LegacyUnknown,"Old use is explicitly unclassified instead of inventing a result");
+   Streak.Record(migrated,day0,true);Check(migrated.streakDayKinds[day0.ToString("yyyy-MM-dd")]==Streak.LegacyUnknown,"Automatic allowed sample cannot reclassify unknown historical usage");
+   Streak.Record(migrated,day0,true,true);Check(migrated.streakDayKinds[day0.ToString("yyyy-MM-dd")]==Streak.WithinPause,"User can explicitly classify today's legacy usage");
+   var roundtrip=Store.Json.Deserialize<State>(Store.Json.Serialize(s));Check(roundtrip.streakDayKinds.Count==2&&roundtrip.streakDayKinds[day0.ToString("yyyy-MM-dd")]==Streak.OutsidePause,"Daily classifications survive serialization");
+   Check(Engine.View(s,day0.AddDays(1).ToUniversalTime()).streakDayKinds[s.day]==Streak.WithinPause,"Snapshot exposes day classifications to the UI");
+   s=new State();var paused=new Rule{name="Live",domains=new[]{"example.com"}};s.rules.Add(paused);Engine.RequestPause(s,paused,utc);
+   Check(Engine.LivePause(s,paused,utc.AddMinutes(1))!=null&&Engine.LivePause(s,paused,utc.AddMinutes(35))!=null&&Engine.LivePause(s,paused,utc.AddMinutes(41))==null,"Live pause covers waiting and access, not after it ends");
+   var viewRow=Engine.View(s,utc.AddMinutes(1)).rules[0];Check(viewRow.pauseStartsAt>Engine.Stamp(utc.AddMinutes(1))&&viewRow.pauseEndsAt-viewRow.pauseStartsAt==600,"Snapshot exposes the pause timeline for the countdown");
+   paused.focusUntil=Engine.Stamp(utc.AddHours(2));Check(Engine.LivePause(s,paused,utc.AddMinutes(35))==null,"Study session hides the release countdown");paused.focusUntil=0;
+   s.pauses[0].cancelled=true;Check(Engine.LivePause(s,paused,utc.AddMinutes(1))==null&&Engine.View(s,utc.AddMinutes(1)).rules[0].pauseEndsAt==0,"Cancelled pause shows no countdown");
+   return count;
+  }
+ }
+}

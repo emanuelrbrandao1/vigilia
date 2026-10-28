@@ -1,0 +1,29 @@
+# Dados locais, registros e backups
+**/dados*.json
+**/dados.*.tmp
+**/migracao.json
+**/mudanca-windows-pendente.json
+**/backups/
+**/operacoes/
+*.log
+*.bak
+*.tmp
+*.lnk
+.env
+.env.*
+*.pem
+*.key
+
+# Binários e arquivos gerados para cada computador
+*.exe
+*.dll
+*.exe.config
+painel/native-host.json
+painel/extension-id.txt
+painel/preview*.png
+node_modules/
+test-results/
+playwright-report/
+.vs/
+Thumbs.db
+Desktop.ini

@@ -1,0 +1,31 @@
+name: Testes
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Compilar e testar o motor
+        shell: powershell
+        run: ./painel/Compilar.ps1 -PrepararAtualizacao
+      - name: Testar a extensão
+        run: node --experimental-vm-modules --test ./painel/test-extension.mjs
+      - name: Testar o conector em dados isolados
+        env:
+          FOCO_TEST_STAGED: '1'
+        run: node ./painel/test-native.cjs
+      - name: Testar alterações pendentes
+        run: node ./painel/test-pending-native.cjs
+      - name: Testar hosts sem alterar o sistema
+        shell: powershell
+        run: ./Testar.ps1
+      - name: Testar espera de alterações no hosts
+        shell: powershell
+        run: ./Testar-Mudancas.ps1

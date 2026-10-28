@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "Vigília — Foco local",
+  "version": "1.2.0",
+  "icons": {"16":"icons/foco-16.png","32":"icons/foco-32.png","48":"icons/foco-48.png","128":"icons/foco-128.png"},
+  "description": "Bloqueios, horários e tempo na aba ativa, compartilhados com o painel local do Windows.",
+  "minimum_chrome_version": "120",
+  "permissions": [
+    "tabs",
+    "storage",
+    "idle",
+    "alarms",
+    "declarativeNetRequest",
+    "nativeMessaging"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_icon": {"16":"icons/foco-16.png","24":"icons/foco-24.png","32":"icons/foco-32.png"},
+    "default_title": "Vigília | Foco local",
+    "default_popup": "popup.html"
+  },
+  "incognito": "spanning",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwy0vQ9jQC4vb5Y1Dirp1htNKzDP+fOnpqwrG8FU9cO/2n/BvNojLJOdAEX5KWB/dIo0flBzaP69I5xrPSg2m8h4hIWMyV3ZAgzeHe0/81X4xAyvTnuaGHUc98oit2JVEhIUA+E5Bvlba7DOLJy5ybMpSMqhNF1LxcoBzaPpk6nRkDdxeA2QGqO1ffwpA1g9aJUcBC7E07wiWhFA2tCshW+Pdcq+VK625hm7Au7oXGE/969NDxYMoYhgjd1d+GoDXxtb5b45ivn7YAwrVSJUDHs9OBVrSqaUEt5bav14GpVBweiNdcaq++WthyU3q2EIaBZ4vQ9AB9n3slIx5ey7XkQIDAQAB"
+}
