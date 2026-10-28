@@ -2,6 +2,8 @@
 
 O Vigília cria uma barreira inicial mínima às distrações digitais: uma pequena pausa entre o impulso de abrir um site e a decisão de acessá-lo. O objetivo é aumentar a produtividade e o rendimento, além de ter mais tempo disponível para a vida real.
 
+O projeto surgiu da inspiração em aplicações como o Cold Turkey e em extensões de bloqueio de sites. Ao explorar essas ferramentas, percebi algumas limitações em relação ao que buscava para minha rotina e decidi desenvolver uma solução personalizada, com regras e recursos que atendessem às minhas necessidades.
+
 Você define os horários, as cotas de uso e os períodos de foco que fazem sentido para sua rotina em um painel no Windows. A extensão aplica os limites no Chrome e no Edge, contando o tempo na aba ativa com o navegador em primeiro plano.
 
 ![Painel do Vigília com regras e histórico fictícios](docs/painel-demo.png)
