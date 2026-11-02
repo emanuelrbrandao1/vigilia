@@ -35,7 +35,8 @@ test('foreground, focus changes, inactive computer, quota and native disconnect'
   const storage={rules:[rule]};
   const chrome={
     storage:{local:{get:async key=>({[key]:storage[key]}),set:async data=>Object.assign(storage,data)}},
-    tabs:{query:async ()=>[{id:1,url,active:true,incognito}],update:async(id,data)=>{updates.push(data.url);url=data.url;},onActivated:events('activate'),onUpdated:events('updated'),onRemoved:events('removed')},
+    tabs:{get:async id=>({id,url,incognito}),query:async ()=>[{id:1,url,active:true,incognito}],update:async(id,data)=>{updates.push(data.url);url=data.url;},onActivated:events('activate'),onUpdated:events('updated'),onRemoved:events('removed')},
+    webNavigation:{onBeforeNavigate:events('beforeNavigate'),onErrorOccurred:events('navigationError')},
     windows:{getLastFocused:async()=>({focused,id:1}),onFocusChanged:events('focus')},
     idle:{setDetectionInterval:()=>{},queryState:async()=>idle,onStateChanged:events('idle')},
     alarms:{create:async()=>{},onAlarm:events('alarm')},
@@ -54,13 +55,16 @@ test('foreground, focus changes, inactive computer, quota and native disconnect'
   focused=true;idle='idle';listeners.idle();await settle();assert.equal(sent.at(-1).active,false);
   idle='active';url='https://other.test';listeners.activate();await settle();assert.equal(sent.at(-1).domain,'');
   url='https://example.com';response={ok:true,rules:[{...rule,blocked:true,reason:'Limite diário atingido'}]};timer();await settle();
-  assert.equal(rules.length,1);assert.ok(updates.at(-1).includes('blocked.html#sample'));
+  assert.equal(rules.length,1);assert.ok(updates.at(-1).includes('#sample'));
   url='https://example.com';response={ok:true,rules:[rule,{...rule,id:'daily',blocked:true}]};timer();await settle();
-  assert.ok(updates.at(-1).includes('blocked.html#daily'));assert.equal(sent.at(-1).active,false);
+  assert.ok(updates.at(-1).includes('#daily'));assert.equal(sent.at(-1).active,false);
   response={ok:true,rules:[rule]};timer();await settle();assert.equal(rules.length,0);
   response={ok:true,rules:[],archivedRules:[{...rule,archived:true}]};timer();await settle();assert.equal(rules.length,0);timer();await settle();assert.equal(sent.at(-1).active,false);
   response={ok:true,rules:[rule]};timer();await settle();
   incognito=true;url='https://example.com';timer();await settle();assert.equal(sent.at(-1).active,true);
   response={ok:true,rules:[{...rule,blocked:true}]};timer();await settle();assert.equal(updates.at(-1),'about:blank');
+  incognito=false;url='chrome-error://chromewebdata/';listeners.navigationError({tabId:1,frameId:0,url:'https://example.com',error:'net::ERR_BLOCKED_BY_CLIENT'});await settle();assert.ok(updates.at(-1).includes('blocked.html?site=example.com#sample'));
+  const updateCount=updates.length;listeners.navigationError({tabId:1,frameId:2,url:'https://example.com',error:'net::ERR_BLOCKED_BY_CLIENT'});await settle();assert.equal(updates.length,updateCount);
+  url='https://other.test';listeners.beforeNavigate({tabId:1,frameId:0,url:'https://example.com'});await settle();assert.equal(updates.length,updateCount);
   nativeDisconnect();await settle();assert.equal(rules.length,1);
 });

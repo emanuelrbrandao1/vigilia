@@ -1,2 +1,14 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Vigília | Acesso bloqueado</title><link rel="stylesheet" href="style.css"></head>
-<body class="blocked"><main><p class="eyebrow">VIGÍLIA</p><div class="mark">Ⅱ</div><h1>Este acesso está em pausa.</h1><p id="reason">Este site está bloqueado pela sua regra.</p><p class="small">Sua regra continua valendo. Consulte os horários ou uma pausa temporária no painel.</p><button id="back">Voltar</button><button id="open" hidden>Abrir site</button><p id="status" class="small"></p></main><script type="module" src="blocked.js"></script></body></html>
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Vigília | Limite atingido</title><link rel="stylesheet" href="style.css"></head>
+<body class="blocked"><main>
+<p class="eyebrow"><img src="icons/foco-48.png" alt="">VIGÍLIA</p>
+<div class="mark" aria-hidden="true">Ⅱ</div>
+<h1 id="heading">Este acesso está em pausa.</h1>
+<p id="site" class="site-name"></p>
+<p id="reason">Conferindo suas regras…</p>
+<section class="limit-card" aria-label="Seu limite"><p id="usage"></p><p id="resume"></p></section>
+<p class="small">Uma pausa para voltar ao que você escolheu priorizar.</p>
+<div class="blocked-actions"><button id="back">Voltar</button><button id="open" hidden>Abrir site</button></div>
+<p id="status" class="small" role="status"></p>
+</main><script type="module" src="blocked.js"></script></body></html>

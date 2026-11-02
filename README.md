@@ -90,6 +90,8 @@ O motor possui 195 verificações, incluindo regras combinadas para o mesmo dom�
 
 Há também um teste opcional com navegador real. Instale o Playwright (`npm install --no-save playwright`) e execute `node painel/test-browser.cjs`. Ele exige Chrome ou Edge instalado e o conector já registrado, e lê as regras da instalação registrada em um perfil temporário. Não deve ser usado como teste isolado de dados pessoais. Use `FOCO_TEST_BROWSER=chrome` para Chrome, ou deixe sem essa variável para Edge.
 
+Para conferir a página de bloqueio no Chrome, defina `FOCO_TEST_BLOCKED_URL` com um endereço já bloqueado na instalação registrada e execute `node painel/test-blocked-browser.cjs`. Ele abre um perfil temporário, confirma o encaminhamento à página do Vigília e verifica que o botão de reabrir continua oculto. Não altera regras nem instala a extensão no perfil pessoal.
+
 ## Limites e privacidade
 
 O Vigília é uma ferramenta de autocontrole. Quem controla o computador pode desativar a extensão, usar outro perfil, editar arquivos ou mudar o relógio. Ele não oferece proteção inviolável nem filtragem automática de todo conteúdo adulto.

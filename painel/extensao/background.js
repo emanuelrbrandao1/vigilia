@@ -4,6 +4,27 @@ const browser = /Edg\//.test(navigator.userAgent) ? 'Edge' : 'Chrome';
 let port, snapshot = { rules: defaults }, connected = false, ready = false;
 let signature = '', pending = false, lastSent = 0, lastReceived = 0, applying = Promise.resolve();
 let reconnectAt = 0;
+const redirects = new Map();
+async function showBlocked(tab, rules, url = tab.pendingUrl || tab.url) {
+  const rule = matchingRule(url, rules);
+  if (!rule?.blocked || tab.id == null) return;
+  const target = tab.incognito ? 'about:blank' : chrome.runtime.getURL('blocked.html') + '?site=' + encodeURIComponent(hostname(url)) + '#' + encodeURIComponent(rule.id);
+  const previous=redirects.get(tab.id);
+  if(previous?.target===target&&Date.now()-previous.at<2000)return;
+  redirects.set(tab.id,{target,at:Date.now()});
+  try { await chrome.tabs.update(tab.id, { url: target }); } catch { redirects.delete(tab.id); }
+}
+async function blockedNavigation(details) {
+  if (details.frameId !== 0 || details.tabId < 0) return;
+  await initialized;
+  if (!matchingRule(details.url, snapshot.rules)?.blocked) return;
+  try {
+    const tab = await chrome.tabs.get(details.tabId);
+    const current = hostname(tab.pendingUrl || tab.url);
+    if (current && current !== hostname(details.url)) return;
+    await showBlocked(tab, snapshot.rules, details.url);
+  } catch { /* Closed tab. The network block remains active. */ }
+}
 const initialized = (async () => {
   const cached = await chrome.storage.local.get('rules');
   snapshot.rules = failClosed(cached.rules || defaults);
@@ -24,14 +45,7 @@ function enforce(rules) {
     }
     const tabs = await chrome.tabs.query({});
     for (const tab of tabs) {
-      const rule = matchingRule(tab.pendingUrl || tab.url, rules);
-      if (rule?.blocked && tab.id) {
-        // Spanning keeps one counter across normal/private windows. Chromium does
-        // not allow its extension pages as top-level private tabs in this mode.
-        const blockedUrl = tab.incognito ? 'about:blank' : chrome.runtime.getURL('blocked.html') + '#' + encodeURIComponent(rule.id);
-        try { await chrome.tabs.update(tab.id, { url: blockedUrl }); }
-        catch { /* The tab may close between the query and redirect. */ }
-      }
+      await showBlocked(tab, rules);
     }
     ready = true;
   });
@@ -94,7 +108,13 @@ async function tick() {
 
 chrome.tabs.onActivated.addListener(() => void tick());
 chrome.tabs.onUpdated.addListener((_id, change) => { if (change.url || change.status === 'complete') void tick(); });
-chrome.tabs.onRemoved.addListener(() => void tick());
+chrome.tabs.onRemoved.addListener(id => {redirects.delete(id);void tick();});
+// Navigation errors can replace the tab URL with Chrome's internal error
+// document before tabs.query sees it. The event retains the blocked URL.
+chrome.webNavigation.onBeforeNavigate.addListener(details => void blockedNavigation(details), {url:[{schemes:['http','https']}]});
+chrome.webNavigation.onErrorOccurred.addListener(details => {
+  if (details.error === 'net::ERR_BLOCKED_BY_CLIENT') void blockedNavigation(details);
+}, {url:[{schemes:['http','https']}]});
 chrome.windows.onFocusChanged.addListener(() => void tick());
 chrome.idle.onStateChanged.addListener(() => void tick());
 chrome.alarms.onAlarm.addListener(() => void tick());

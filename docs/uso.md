@@ -31,6 +31,8 @@ Ao criar uma regra, ela aproveita o consumo conhecido do dia para seus domínios
 
 Depois de atualizar o aplicativo, clique em **Recarregar** na extensão do Chrome e do Edge para ativar a versão 1.3.0, que combina as regras também nas abas já abertas.
 
+Na versão 1.3.1, a navegação bloqueada abre a página do Vigília com motivo, consumo e renovação da cota, em vez do erro genérico do Chrome. A permissão `webNavigation` reconhece o início e o erro de navegação para encaminhar os sites configurados à página local. Não adiciona leitura do conteúdo de páginas nem gravação de histórico completo. O endereço mostrado nessa página contém apenas o domínio, sem caminho ou parâmetros da página original. Se o navegador pedir confirmação das permissões ao recarregar, confirme manualmente para ativar a nova versão. Em janelas privadas, permanece a página em branco por restrição do modo de execução da extensão.
+
 ## Alterações e estudo
 
 Reduzir a cota ou aumentar a restrição é imediato. Aumentar o tempo, remover domínios, excluir ou arquivar uma regra que restringe acesso exige 24 horas. Uma mudança que restringe um período e libera outro também espera. O consumo já registrado participa da comparação.
