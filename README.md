@@ -15,6 +15,7 @@ A imagem usa dados de demonstração. O projeto está em fase de protótipo e a 
 - Bloqueio permanente, horários de bloqueio e cotas de minutos por dia ou por faixa.
 - Sessões de estudo com duração escolhida pelo usuário.
 - Cota compartilhada entre Chrome e Edge.
+- Várias regras para o mesmo domínio: por exemplo, 20 minutos na faixa escolhida e no máximo 40 minutos no dia inteiro. Todas precisam permitir o acesso.
 - Arquivamento de regras sem perder a configuração.
 - Espera de 24 horas para mudanças que liberam mais acesso. Restrições adicionais entram em vigor imediatamente.
 - Pausa temporária em bloqueios permanentes: 30 minutos de espera, 10 minutos de acesso e intervalo de 24 horas por site/grupo, contado desde o início previsto da liberação anterior.
@@ -85,7 +86,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Testar.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\Testar-Mudancas.ps1
 ```
 
-O motor possui 175 verificações, incluindo faixas que cruzam a meia-noite, consumo compartilhado, alterações pendentes, recuperação de pausas e migração do histórico. Os prazos longos são testados com relógio simulado. Os testes de hosts não alteram o arquivo hosts real.
+O motor possui 191 verificações, incluindo regras combinadas para o mesmo domínio, faixas que cruzam a meia-noite, consumo compartilhado, alterações pendentes, recuperação de pausas e migração do histórico. Os prazos longos são testados com relógio simulado. Os testes de hosts não alteram o arquivo hosts real.
 
 Há também um teste opcional com navegador real. Instale o Playwright (`npm install --no-save playwright`) e execute `node painel/test-browser.cjs`. Ele exige Chrome ou Edge instalado e o conector já registrado, e lê as regras da instalação registrada em um perfil temporário. Não deve ser usado como teste isolado de dados pessoais. Use `FOCO_TEST_BROWSER=chrome` para Chrome, ou deixe sem essa variável para Edge.
 

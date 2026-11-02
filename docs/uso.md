@@ -15,6 +15,22 @@ Horários iguais significam o dia inteiro. Numa faixa de 22h a 6h, o dia selecio
 
 O painel pode ficar fechado. A extensão precisa permanecer conectada ao conector para receber regras novas. Quando a conexão falha, ela bloqueia os sites já configurados até reconectar.
 
+### Combinar limite por faixa com limite diário
+
+Você pode cadastrar o mesmo domínio em várias regras. O acesso só fica disponível quando **todas** as regras correspondentes permitem. Uma regra de subdomínio também combina com as regras do domínio principal.
+
+Para manter uma cota na faixa e acrescentar um teto de 40 minutos no Instagram:
+
+1. Mantenha a regra atual de `instagram.com` no modo **Cota de minutos na faixa · livre fora dela**.
+2. Crie outra regra, como **Instagram · máximo diário**, com `instagram.com`.
+3. Escolha **Permitir apenas no horário + limite diário**, informe **40 minutos**, coloque início e fim em **00:00** (dia inteiro) e marque todos os dias.
+
+Um minuto dentro da faixa consome um minuto das duas cotas, não dois minutos do dia. Fora da faixa, apenas o limite diário restringe o acesso. Esgotar qualquer uma das cotas bloqueia o site enquanto aquela regra estiver restringindo. Sessões de estudo e bloqueios permanentes também prevalecem. A espera de 24 horas para flexibilizar cada regra continua valendo.
+
+Ao criar uma regra, ela aproveita o consumo conhecido do dia para seus domínios. Em dados antigos, sem detalhamento por domínio, o consumo só pode ser reaproveitado de uma regra com exatamente os mesmos domínios. Não é possível reconstruir quanto um único site consumiu dentro de um grupo antigo com vários sites. O total do painel usa contagem única para os novos intervalos e preserva o total anterior na migração.
+
+Depois de atualizar o aplicativo, clique em **Recarregar** na extensão do Chrome e do Edge para ativar a versão 1.3.0, que combina as regras também nas abas já abertas.
+
 ## Alterações e estudo
 
 Reduzir a cota ou aumentar a restrição é imediato. Aumentar o tempo, remover domínios, excluir ou arquivar uma regra que restringe acesso exige 24 horas. Uma mudança que restringe um período e libera outro também espera. O consumo já registrado participa da comparação.
@@ -49,6 +65,6 @@ Passe o mouse sobre um dia para ver sua data e classificação. Hoje tem uma bor
 
 ## Arquivos locais
 
-`painel/dados.json` contém regras, consumo e acompanhamento. `dados.anterior.json` mantém uma versão anterior. Backups adicionais são criados ao atualizar. O manifesto `painel/native-host.json` é gerado pela compilação e contém o caminho local do conector.
+`painel/dados.json` contém regras, consumo e acompanhamento. Para combinar cotas sem duplicar minutos, a versão 8 do formato também registra os segundos por domínio/subdomínio acompanhado no dia atual, sem caminhos de páginas. Esses totais reiniciam à meia-noite local. `dados.anterior.json` mantém uma versão anterior. Backups adicionais são criados ao atualizar. O manifesto `painel/native-host.json` é gerado pela compilação e contém o caminho local do conector.
 
 O aplicativo de hosts guarda backups em `backups/` e operações em `operacoes/`. Esses arquivos estão no `.gitignore` e não devem ser publicados. Não adicione capturas de tela com dados pessoais ao repositório.

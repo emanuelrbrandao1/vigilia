@@ -88,13 +88,18 @@ namespace FocoLocal {
    }
    return false;
   }
-  static void CheckDomains(State s,Rule target) {
-   foreach(var other in s.rules.Where(r=>r.id!=target.id).Concat(s.pendingChanges.Where(p=>p.ruleId!=target.id&&p.target!=null).Select(p=>p.target)))
-    if(Engine.Overlap(other.domains,target.domains))throw new Exception("Esse domínio já está coberto ou reservado pela regra: "+other.name);
-  }
   static void Install(State s,Rule next,DateTime utc) {
    Engine.Rollover(s,utc.ToLocalTime());
    int index=s.rules.FindIndex(r=>r.id==next.id);var previous=index<0?null:s.rules[index];
+   if(previous==null){
+    double recorded=s.hostUsage.Where(pair=>next.domains.Any(d=>Engine.Match(pair.Key,d))).Sum(pair=>pair.Value);
+    // Legacy installations have rule totals but no per-host breakdown. Reuse
+    // only identical coverage, never guess how much of a mixed group was used.
+    foreach(var other in s.rules.Where(r=>r.domains.OrderBy(d=>d).SequenceEqual(next.domains.OrderBy(d=>d)))){
+     double used;s.usage.TryGetValue(other.id,out used);recorded=Math.Max(recorded,used);
+    }
+    if(recorded>0)s.usage[next.id]=recorded;
+   }
    // Changing a window must not replenish the current allowance, especially
    // when changing which date owns an overnight window.
    if(previous!=null&&next.windowQuota) {
@@ -110,7 +115,7 @@ namespace FocoLocal {
    if(index<0)s.rules.Add(next);else s.rules[index]=next;
   }
   public static PendingChange Save(State s,Rule candidate,DateTime utc) {
-   ApplyDue(s,utc);var next=Copy(candidate);Engine.Validate(next);CheckDomains(s,next);
+   ApplyDue(s,utc);var next=Copy(candidate);Engine.Validate(next);
    var old=s.rules.FirstOrDefault(r=>r.id==next.id);
    if(old!=null){next.archived=old.archived;next.focusUntil=old.focusUntil;next.pauseSuppressedUntil=old.pauseSuppressedUntil;}
    if(old!=null&&NeedsWait(s,old,next,utc))return Queue(s,old.id,"edit",next,utc);
@@ -143,7 +148,7 @@ namespace FocoLocal {
     var old=s.rules.FirstOrDefault(r=>r.id==p.ruleId);changed=true;
     try {
      if(old!=null) {
-      if(p.kind=="edit") {var next=Copy(p.target);Engine.Validate(next);CheckDomains(s,next);next.focusUntil=old.focusUntil;next.archived=old.archived;next.pauseSuppressedUntil=old.pauseSuppressedUntil;Install(s,next,utc);}
+      if(p.kind=="edit") {var next=Copy(p.target);Engine.Validate(next);next.focusUntil=old.focusUntil;next.archived=old.archived;next.pauseSuppressedUntil=old.pauseSuppressedUntil;Install(s,next,utc);}
       else if(p.kind=="delete")s.rules.Remove(old);
       else if(p.kind=="archive")old.archived=true;
       else if(p.kind=="endFocus")old.focusUntil=0;

@@ -38,7 +38,7 @@ namespace FocoLocal {
    s=new State();old=Q();s.rules.Add(old);s.day=utc.ToLocalTime().ToString("yyyy-MM-dd");s.windowUsage[Engine.WindowKey(old,utc.ToLocalTime().Date)]=600;next=Changes.Copy(old);next.start=1320;next.end=1110;
    Check(Changes.Save(s,next,utc)==null&&Engine.WindowUsed(s.rules[0],s,utc.ToLocalTime())==600,"Restrictive overnight change carries consumed quota to new date key");
    s=new State();old=Q();s.rules.Add(old);next=Changes.Copy(old);next.minutes=40;next.domains=new[]{"example.com","other.test"};Changes.Save(s,next,utc);
-   bool collision=false;try{Changes.Save(s,new Rule{name="Conflicting",domains=new[]{"other.test"}},utc);}catch{collision=true;}Check(collision,"Pending domains reserved against conflicting new rules");
+   Check(Changes.Save(s,new Rule{name="Additional block",domains=new[]{"other.test"}},utc)==null&&s.rules.Count==2,"Overlapping rules can coexist with pending changes");
    s=new State();old=new Rule{name="Pause",domains=new[]{"example.com"}};s.rules.Add(old);Engine.RequestPause(s,old,utc);old.always=false;old.minutes=1;next=Changes.Copy(old);next.always=true;Changes.Save(s,next,utc.AddMinutes(31));Check(!Engine.Paused(s,s.rules[0],utc.AddMinutes(32)),"Tightening permanent block cannot inherit old active pause");
    Check(Store.Json.Deserialize<State>("{\"version\":4}").pendingChanges!=null,"Version 4 initializes pending list");
    var oneAm=new DateTime(2026,10,27,1,0,0,DateTimeKind.Local).ToUniversalTime();s=new State();old=Q();old.start=1320;old.end=360;s.rules.Add(old);s.day=oneAm.ToLocalTime().ToString("yyyy-MM-dd");s.windowUsage[Engine.WindowKey(old,oneAm.ToLocalTime().Date.AddDays(-1))]=1200;next=Changes.Copy(old);next.windowQuota=false;next.start=next.end=0;next.minutes=10;
@@ -87,6 +87,31 @@ namespace FocoLocal {
    var viewRow=Engine.View(s,utc.AddMinutes(1)).rules[0];Check(viewRow.pauseStartsAt>Engine.Stamp(utc.AddMinutes(1))&&viewRow.pauseEndsAt-viewRow.pauseStartsAt==600,"Snapshot exposes the pause timeline for the countdown");
    paused.focusUntil=Engine.Stamp(utc.AddHours(2));Check(Engine.LivePause(s,paused,utc.AddMinutes(35))==null,"Study session hides the release countdown");paused.focusUntil=0;
    s.pauses[0].cancelled=true;Check(Engine.LivePause(s,paused,utc.AddMinutes(1))==null&&Engine.View(s,utc.AddMinutes(1)).rules[0].pauseEndsAt==0,"Cancelled pause shows no countdown");
+   s=new State();old=Q();old.domains=new[]{"instagram.com"};Changes.Save(s,old,utc);
+   var daily=new Rule{name="Instagram diario",domains=new[]{"instagram.com"},always=false,minutes=40,start=0,end=0};
+   Check(Changes.Save(s,daily,utc)==null&&s.rules.Count==2,"Work allowance and daily cap coexist immediately");
+   t=Engine.Stamp(utc);Engine.Charge(s,"www.instagram.com",t,t+2,utc.AddSeconds(2));
+   Check(s.usage[old.id]==2&&s.usage[daily.id]==2&&Engine.WindowUsed(old,s,utc.ToLocalTime())==2,"One interval charges work and daily quotas equally");
+   Check(Engine.View(s,utc.AddSeconds(2)).monitoredSeconds==2,"Dashboard total counts overlapping rules only once");
+   Engine.Charge(s,"www.instagram.com",t+1,t+3,utc.AddSeconds(3));Check(s.usage[daily.id]==3&&s.monitoredSeconds==3,"Overlap also preserves shared-browser interval deduplication");
+   s.windowUsage[Engine.WindowKey(old,utc.ToLocalTime().Date)]=1200;Engine.Charge(s,"www.instagram.com",t+3,t+4,utc.AddSeconds(4));
+   Check(s.usage[daily.id]==3&&s.monitoredSeconds==3,"Blocked work quota prevents phantom daily usage");
+   var outside=utc.ToLocalTime().Date.AddHours(19).ToUniversalTime();t=Engine.Stamp(outside);Engine.Charge(s,"instagram.com",t,t+2,outside.AddSeconds(2));
+   Check(s.usage[daily.id]==5&&Engine.WindowUsed(old,s,outside.ToLocalTime())==1200,"Outside work hours only daily budget is consumed");
+   s.usage[daily.id]=2400;t+=2;Engine.Charge(s,"instagram.com",t,t+2,outside.AddSeconds(4));Check(s.usage[old.id]==5,"Exhausted daily quota stops all sibling counters outside work hours");
+   Check(Changes.Archive(s,daily.id,outside)!=null&&Changes.Delete(s,old.id,outside)!=null,"Archive and delete still wait 24 hours with overlapping rules");
+   s=new State();old=Q();s.rules.Add(old);s.day=utc.ToLocalTime().ToString("yyyy-MM-dd");s.usage[old.id]=900;daily=new Rule{name="Daily",domains=new[]{"example.com"},always=false,minutes=40,start=0,end=0};Changes.Save(s,daily,utc);
+   Check(s.usage[daily.id]==900,"Adding daily cap reuses earlier use from identical existing coverage");
+   var sub=new Rule{name="Subdomain",domains=new[]{"sub.example.com"},always=false,minutes=1,start=0,end=0};Changes.Save(s,sub,utc);s.usage[sub.id]=60;t=Engine.Stamp(utc);Engine.Charge(s,"sub.example.com",t,t+1,utc.AddSeconds(1));Check(s.usage[daily.id]==900,"Subdomain cap combines with parent-domain rules");
+   s=new State();old=Q();s.rules.Add(old);t=Engine.Stamp(utc);Engine.Charge(s,"example.com",t,t+2,utc.AddSeconds(2));daily=new Rule{name="New daily",domains=new[]{"example.com","other.test"},always=false,minutes=40,start=0,end=0};Changes.Save(s,daily,utc.AddSeconds(2));Check(s.usage[daily.id]==2,"New grouped quota seeds known per-host usage without summing duplicated rule totals");
+   Engine.Rollover(s,utc.ToLocalTime().AddDays(1));Check(s.hostUsage.Count==0&&s.monitoredSeconds==0,"Midnight resets unique totals and daily rules together");
+   var scenario=new State();var work=Q();var fullDay=new Rule{name="40 min por dia",domains=new[]{"example.com"},always=false,minutes=40,start=0,end=0};Changes.Save(scenario,work,utc);Changes.Save(scenario,fullDay,utc);
+   Action<DateTime,int> consume=(begin,seconds)=>{for(int offset=0;offset<seconds;offset+=2){var at=begin.AddSeconds(offset);Engine.Charge(scenario,"example.com",Engine.Stamp(at),Engine.Stamp(at.AddSeconds(2)),at.AddSeconds(2));}};
+   consume(utc.ToLocalTime().Date.AddHours(12).ToUniversalTime(),600);consume(utc,1200);
+   Check(scenario.usage[fullDay.id]==1800&&Engine.WindowUsed(work,scenario,utc.ToLocalTime())==1200,"Real foreground trace: 10 min before work plus 20 in work uses 30 of daily 40");
+   consume(utc.AddMinutes(21),60);Check(scenario.usage[fullDay.id]==1800,"Real foreground trace: work cap blocks despite remaining daily allowance");
+   consume(outside,600);Check(scenario.usage[fullDay.id]==2400&&scenario.monitoredSeconds==2400,"Real foreground trace: outside work only 10 remaining minutes are available");
+   consume(outside.AddMinutes(11),60);Check(scenario.usage[fullDay.id]==2400&&scenario.monitoredSeconds==2400,"Real foreground trace: daily ceiling blocks further use everywhere");
    return count;
   }
  }

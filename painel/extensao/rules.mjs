@@ -9,7 +9,8 @@ export function hostname(url) {
 export function matches(host, domain) { return host === domain || host.endsWith('.' + domain); }
 export function matchingRule(url, rules) {
   const host = hostname(url);
-  return rules.find(r => r.domains.some(d => matches(host, d)));
+  const matching = rules.filter(r => r.domains.some(d => matches(host, d)));
+  return matching.find(r => r.blocked) || matching[0];
 }
 export function networkRules(rules) {
   let id = 1;

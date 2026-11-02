@@ -16,10 +16,10 @@ async function run(data){
  const pending={ruleId:'test',kind:'archive',requestedAt:now-86401,executeAt:now-1};
  const expired={version:4,rules:[rule],pendingChanges:[pending]};
  const result=await run(expired);assert.equal(result.rules.length,0);assert.equal(result.archivedRules.length,1);
- const saved=JSON.parse(fs.readFileSync(path.join(root,'dados.json'),'utf8'));assert.equal(saved.version,7);assert.equal(saved.pendingChanges.length,0);assert.equal(saved.rules[0].archived,true);
+ const saved=JSON.parse(fs.readFileSync(path.join(root,'dados.json'),'utf8'));assert.equal(saved.version,8);assert.equal(saved.pendingChanges.length,0);assert.equal(saved.rules[0].archived,true);
  const restored=await run(saved);assert.equal(restored.rules.length,0);
  const future={version:4,rules:[rule],pendingChanges:[{...pending,executeAt:now+86400}]};
  const waiting=await run(future);assert.equal(waiting.rules.length,1);assert.equal(waiting.rules[0].blocked,true);assert.ok(waiting.rules[0].changeStatus.includes('Arquivar'));
  const kept=JSON.parse(fs.readFileSync(path.join(root,'dados.json'),'utf8'));assert.equal(kept.pendingChanges.length,1);
- console.log('PASS: overdue pending change applied before native snapshot, persisted v7, restart stable, future pending stays blocked');
+ console.log('PASS: overdue pending change applied before native snapshot, persisted v8, restart stable, future pending stays blocked');
 })().catch(error=>{console.error(error);process.exitCode=1;});

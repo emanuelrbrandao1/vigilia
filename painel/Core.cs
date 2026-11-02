@@ -22,12 +22,14 @@ namespace FocoLocal {
   public int minutes = 30, start = 0, end = 0, days = 127;
  }
  public class State {
-  public int version = 7;
+  public int version = 8;
   public List<PendingChange> pendingChanges = new List<PendingChange>();
   public List<Pause> pauses = new List<Pause>();
   public List<Rule> rules = new List<Rule>();
   public string day = "";
   public Dictionary<string,double> usage = new Dictionary<string,double>();
+  public Dictionary<string,double> hostUsage = new Dictionary<string,double>();
+  public double? monitoredSeconds;
   public Dictionary<string,double> windowUsage = new Dictionary<string,double>();
   public Dictionary<string,double> seen = new Dictionary<string,double>();
   public Dictionary<string,bool> ready = new Dictionary<string,bool>();
@@ -51,6 +53,7 @@ namespace FocoLocal {
  }
  public class Snapshot {
   public bool ok = true;
+  public double monitoredSeconds;
   public string day, error;
   public List<Row> rules;
   public List<Row> archivedRules;
@@ -122,9 +125,11 @@ namespace FocoLocal {
    return (t>=r.start && (r.days & (1<<d))!=0) || (t<r.end && (r.days & (1<<((d+6)%7)))!=0);
   }
   public static void Rollover(State s, DateTime local) {
+   if(s.hostUsage==null)s.hostUsage=new Dictionary<string,double>();
+   if(!s.monitoredSeconds.HasValue)s.monitoredSeconds=s.usage.Values.Sum();
    string day = local.ToString("yyyy-MM-dd");
    // Moving the clock backwards must not replenish a quota already consumed.
-   if (String.CompareOrdinal(day,s.day)>0) { s.day=day; s.usage.Clear(); }
+   if (String.CompareOrdinal(day,s.day)>0) { s.day=day; s.usage.Clear();s.hostUsage.Clear();s.monitoredSeconds=0; }
    string cutoff=local.Date.AddDays(-7).ToString("yyyy-MM-dd");
    foreach(string key in s.windowUsage.Keys.Where(k=>k.Length>=10 && String.CompareOrdinal(k.Substring(k.Length-10),cutoff)<0).ToArray()) s.windowUsage.Remove(key);
   }
@@ -165,6 +170,10 @@ namespace FocoLocal {
    double seconds = Math.Max(0,to-Math.Max(uniqueFrom,midnight));
    if(to<=uniqueFrom) return;
    var matches=s.rules.Where(r=>!r.archived&&r.domains.Any(d=>Match(host,d))).ToArray();
+   // All matching rules must permit access. Evaluate before updating any
+   // counter, so a quota reached by this sample still charges its siblings.
+   if(matches.Any(r=>Reason(r,s,local)!="Permitido agora")){s.chargedUntil=Math.Max(s.chargedUntil,to);return;}
+   if(matches.Length>0&&seconds>0){double recorded;s.hostUsage.TryGetValue(host,out recorded);s.hostUsage[host]=recorded+seconds;s.monitoredSeconds+=seconds;}
    foreach(var r in matches) {
     if(r.windowQuota && !r.always && r.focusUntil<=from) {
      // Clip to actual daily windows so a sample crossing a boundary never
@@ -182,7 +191,6 @@ namespace FocoLocal {
      double daily;s.usage.TryGetValue(r.id,out daily);s.usage[r.id]=daily+seconds;
      continue;
     }
-    if (Reason(r,s,local)!="Permitido agora") continue;
     double used; s.usage.TryGetValue(r.id,out used);
     s.usage[r.id] = r.minutes>0 ? Math.Min(r.minutes*60,used+seconds) : used+seconds;
     if (r.always && seconds>0) Streak.Record(s,local,true);
@@ -193,7 +201,7 @@ namespace FocoLocal {
    DateTime local=utc.ToLocalTime(); Rollover(s,local);
    Func<Rule,Row> row=r=>{var live=LivePause(s,r,utc);var item=new Row {id=r.id,name=r.name,domains=r.domains,archived=r.archived,changeStatus=s.pendingChanges.Any(p=>p.ruleId==r.id)?Changes.Describe(s.pendingChanges.First(p=>p.ruleId==r.id)):"",pauseStatus=PauseStatus(s,r,utc),always=r.always,blockWindow=r.blockWindow,windowQuota=r.windowQuota,windowUsedSeconds=WindowUsed(r,s,local),focusUntil=r.focusUntil,minutes=r.minutes,start=r.start,end=r.end,days=r.days,usedSeconds=s.usage.ContainsKey(r.id)?s.usage[r.id]:0,reason=Reason(r,s,local),blocked=!r.archived&&Reason(r,s,local)!="Permitido agora"};if(live!=null){item.pauseRequestedAt=live.requestedAt;item.pauseStartsAt=live.startsAt;item.pauseEndsAt=live.endsAt;}return item;};
    Streak.Ensure(s,local);
-   return new Snapshot {day=s.day, seen=s.seen,ready=s.ready,streakDays=Streak.Current(s,local),streakBest=Streak.Best(s,local),streakTracking=s.streakTracking,streakLapses=s.streakLapses.ToList(),streakDayKinds=new Dictionary<string,int>(s.streakDayKinds),rules=s.rules.Where(r=>!r.archived).Select(row).ToList(),archivedRules=s.rules.Where(r=>r.archived).Select(row).ToList()};
+   return new Snapshot {monitoredSeconds=s.monitoredSeconds??0,day=s.day, seen=s.seen,ready=s.ready,streakDays=Streak.Current(s,local),streakBest=Streak.Best(s,local),streakTracking=s.streakTracking,streakLapses=s.streakLapses.ToList(),streakDayKinds=new Dictionary<string,int>(s.streakDayKinds),rules=s.rules.Where(r=>!r.archived).Select(row).ToList(),archivedRules=s.rules.Where(r=>r.archived).Select(row).ToList()};
   }
  }
  public static class Streak {
@@ -236,9 +244,9 @@ namespace FocoLocal {
     State s;
     if(File.Exists(FilePath)) {
      s=Json.Deserialize<State>(File.ReadAllText(FilePath,Encoding.UTF8));
-     if(s==null || s.version<1 || s.version>7 || s.rules==null || s.pendingChanges==null || s.pauses==null || s.usage==null || s.windowUsage==null || s.seen==null || s.ready==null) throw new Exception("Dados inválidos ou de outra versão. O backup foi preservado em dados.anterior.json.");
+     if(s==null || s.version<1 || s.version>8 || s.rules==null || s.pendingChanges==null || s.pauses==null || s.usage==null || s.windowUsage==null || s.seen==null || s.ready==null) throw new Exception("Dados inválidos ou de outra versão. O backup foi preservado em dados.anterior.json.");
     } else { s=new State(); }
-    bool migrated=s.version<7;s.version=7;
+    bool migrated=s.version<8;s.version=8;
     bool due=Changes.ApplyDue(s,DateTime.UtcNow);
     due|=Streak.Ensure(s,DateTime.Now);
     T result=action(s);

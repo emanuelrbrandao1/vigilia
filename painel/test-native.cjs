@@ -23,7 +23,7 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   assert.ok(both.seen.Chrome && both.seen.Edge);
   assert.equal(both.rules[0].windowQuota,true);assert.ok(both.rules[0].windowUsedSeconds>0);
   assert.equal((await chrome.send(false)).rules[0].windowUsedSeconds,both.rules[0].windowUsedSeconds);
-  const saved=JSON.parse(fs.readFileSync(path.join(temp,'dados.json'),'utf8'));assert.equal(saved.version,7);assert.ok(Object.keys(saved.windowUsage).length>0);
-  console.log('PASS: native framing, pause, shared Chrome/Edge window quota, v1-to-v7 migration, persistence and connection status');
+  const saved=JSON.parse(fs.readFileSync(path.join(temp,'dados.json'),'utf8'));assert.equal(saved.version,8);assert.ok(Object.keys(saved.windowUsage).length>0);
+  console.log('PASS: native framing, pause, shared Chrome/Edge window quota, v1-to-v8 migration, persistence and connection status');
  }finally{chrome.child.stdin.end();edge.child.stdin.end();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

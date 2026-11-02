@@ -19,6 +19,14 @@ test('network blocking, no duplicate rules, offline fail closed', () => {
   assert.equal(networkRules(closed).length,1);
   assert.equal(networkRules(closed)[0].condition.urlFilter,'||example.com^');
 });
+test('overlapping rules always select a blocking rule regardless of order', () => {
+  const work={...rule,id:'work'},daily={...rule,id:'daily',blocked:true};
+  assert.equal(matchingRule('https://example.com',[work,daily]),daily);
+  assert.equal(matchingRule('https://example.com',[daily,work]),daily);
+  assert.equal(matchingRule('https://sub.example.com',[work,daily]),daily);
+  assert.equal(networkRules([work,daily]).length,1);
+  assert.equal(matchingRule('https://example.com',[work,{...daily,blocked:false}]),work);
+});
 test('foreground, focus changes, inactive computer, quota and native disconnect', async () => {
   const listeners={}, events = name => ({addListener: fn => {listeners[name]=fn;}});
   let focused=true, idle='active', incognito=false, url='https://example.com/page', rules=[], response={ok:true,rules:[rule]};
@@ -47,6 +55,8 @@ test('foreground, focus changes, inactive computer, quota and native disconnect'
   idle='active';url='https://other.test';listeners.activate();await settle();assert.equal(sent.at(-1).domain,'');
   url='https://example.com';response={ok:true,rules:[{...rule,blocked:true,reason:'Limite diário atingido'}]};timer();await settle();
   assert.equal(rules.length,1);assert.ok(updates.at(-1).includes('blocked.html#sample'));
+  url='https://example.com';response={ok:true,rules:[rule,{...rule,id:'daily',blocked:true}]};timer();await settle();
+  assert.ok(updates.at(-1).includes('blocked.html#daily'));assert.equal(sent.at(-1).active,false);
   response={ok:true,rules:[rule]};timer();await settle();assert.equal(rules.length,0);
   response={ok:true,rules:[],archivedRules:[{...rule,archived:true}]};timer();await settle();assert.equal(rules.length,0);timer();await settle();assert.equal(sent.at(-1).active,false);
   response={ok:true,rules:[rule]};timer();await settle();
