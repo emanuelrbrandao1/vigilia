@@ -201,7 +201,19 @@ namespace FocoLocal {
    DateTime local=utc.ToLocalTime(); Rollover(s,local);
    Func<Rule,Row> row=r=>{var live=LivePause(s,r,utc);var item=new Row {id=r.id,name=r.name,domains=r.domains,archived=r.archived,changeStatus=s.pendingChanges.Any(p=>p.ruleId==r.id)?Changes.Describe(s.pendingChanges.First(p=>p.ruleId==r.id)):"",pauseStatus=PauseStatus(s,r,utc),always=r.always,blockWindow=r.blockWindow,windowQuota=r.windowQuota,windowUsedSeconds=WindowUsed(r,s,local),focusUntil=r.focusUntil,minutes=r.minutes,start=r.start,end=r.end,days=r.days,usedSeconds=s.usage.ContainsKey(r.id)?s.usage[r.id]:0,reason=Reason(r,s,local),blocked=!r.archived&&Reason(r,s,local)!="Permitido agora"};if(live!=null){item.pauseRequestedAt=live.requestedAt;item.pauseStartsAt=live.startsAt;item.pauseEndsAt=live.endsAt;}return item;};
    Streak.Ensure(s,local);
-   return new Snapshot {monitoredSeconds=s.monitoredSeconds??0,day=s.day, seen=s.seen,ready=s.ready,streakDays=Streak.Current(s,local),streakBest=Streak.Best(s,local),streakTracking=s.streakTracking,streakLapses=s.streakLapses.ToList(),streakDayKinds=new Dictionary<string,int>(s.streakDayKinds),rules=s.rules.Where(r=>!r.archived).Select(row).ToList(),archivedRules=s.rules.Where(r=>r.archived).Select(row).ToList()};
+   var active=s.rules.Where(r=>!r.archived).ToArray();var rows=active.Select(row).ToList();
+   // Report an effective block when every domain in this row is already
+   // blocked by a covering rule. Besides explaining the combined result in
+   // the panel, this protects clients that still select the first match.
+   // A child-only restriction must never block its entire parent or group.
+   foreach(var item in rows.Where(r=>!r.blocked)){
+    var blockers=active.Where(r=>Reason(r,s,local)!="Permitido agora").ToArray();
+    if(item.domains.All(domain=>blockers.Any(r=>r.domains.Any(d=>Match(domain,d))))){
+     var cause=blockers.First(r=>item.domains.Any(domain=>r.domains.Any(d=>Match(domain,d))));
+     item.blocked=true;item.reason=Reason(cause,s,local)+" · "+cause.name;
+    }
+   }
+   return new Snapshot {monitoredSeconds=s.monitoredSeconds??0,day=s.day, seen=s.seen,ready=s.ready,streakDays=Streak.Current(s,local),streakBest=Streak.Best(s,local),streakTracking=s.streakTracking,streakLapses=s.streakLapses.ToList(),streakDayKinds=new Dictionary<string,int>(s.streakDayKinds),rules=rows,archivedRules=s.rules.Where(r=>r.archived).Select(row).ToList()};
   }
  }
  public static class Streak {

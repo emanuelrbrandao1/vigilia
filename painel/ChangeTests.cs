@@ -112,6 +112,13 @@ namespace FocoLocal {
    consume(utc.AddMinutes(21),60);Check(scenario.usage[fullDay.id]==1800,"Real foreground trace: work cap blocks despite remaining daily allowance");
    consume(outside,600);Check(scenario.usage[fullDay.id]==2400&&scenario.monitoredSeconds==2400,"Real foreground trace: outside work only 10 remaining minutes are available");
    consume(outside.AddMinutes(11),60);Check(scenario.usage[fullDay.id]==2400&&scenario.monitoredSeconds==2400,"Real foreground trace: daily ceiling blocks further use everywhere");
+   var effective=Engine.View(scenario,outside.AddMinutes(12));
+   Check(effective.rules.All(r=>r.blocked)&&effective.rules.First().reason.Contains(fullDay.name),"Expired daily cap also blocks the first work row for stale extension clients");
+   scenario.rules.First(r=>r.id==fullDay.id).archived=true;Check(!Engine.View(scenario,outside.AddMinutes(12)).rules.First().blocked,"Archived daily cap does not propagate a block");scenario.rules.First(r=>r.id==fullDay.id).archived=false;
+   scenario.rules.Insert(0,new Rule{name="Mixed group",domains=new[]{"example.com","other.test"},always=false,minutes=0,start=0,end=0});
+   Check(!Engine.View(scenario,outside.AddMinutes(12)).rules.First().blocked,"Effective block never spreads to unrelated domains in a group");
+   scenario.rules.Insert(0,new Rule{name="Parent",domains=new[]{"example.org"},always=false,minutes=0,start=0,end=0});scenario.rules.Add(new Rule{name="Child block",domains=new[]{"sub.example.org"}});
+   Check(!Engine.View(scenario,outside.AddMinutes(12)).rules.First().blocked,"A blocked child never blocks the whole parent domain");
    return count;
   }
  }

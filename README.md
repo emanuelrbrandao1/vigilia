@@ -86,7 +86,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Testar.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\Testar-Mudancas.ps1
 ```
 
-O motor possui 191 verificações, incluindo regras combinadas para o mesmo domínio, faixas que cruzam a meia-noite, consumo compartilhado, alterações pendentes, recuperação de pausas e migração do histórico. Os prazos longos são testados com relógio simulado. Os testes de hosts não alteram o arquivo hosts real.
+O motor possui 195 verificações, incluindo regras combinadas para o mesmo domínio, faixas que cruzam a meia-noite, consumo compartilhado, alterações pendentes, recuperação de pausas e migração do histórico. Os prazos longos são testados com relógio simulado. Os testes de hosts não alteram o arquivo hosts real.
 
 Há também um teste opcional com navegador real. Instale o Playwright (`npm install --no-save playwright`) e execute `node painel/test-browser.cjs`. Ele exige Chrome ou Edge instalado e o conector já registrado, e lê as regras da instalação registrada em um perfil temporário. Não deve ser usado como teste isolado de dados pessoais. Use `FOCO_TEST_BROWSER=chrome` para Chrome, ou deixe sem essa variável para Edge.
 
