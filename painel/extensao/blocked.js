@@ -1,6 +1,7 @@
-import { matchingRule, matches } from './rules.mjs';
+import { hostname, matchingRule, matches } from './rules.mjs';
 let target;
-const site = new URLSearchParams(location.search).get('site') || '';
+const requestedSite = new URLSearchParams(location.search).get('site') || '';
+const site = hostname('https://' + requestedSite) === requestedSite ? requestedSite : '';
 const set = (id, text) => { const node=document.getElementById(id); if(node.textContent!==text) node.textContent=text; };
 document.getElementById('back').onclick = () => history.length > 1 ? history.back() : window.close();
 document.getElementById('open').onclick = () => { if(target) location.href='https://'+target; };
@@ -12,7 +13,7 @@ async function refresh() {
   const candidates=(state.rules||[]).filter(r=>domain&&r.domains.some(d=>matches(domain,d)));
   const rule=candidates.find(r=>r.blocked&&r.reason==='Limite diário atingido') || (domain&&matchingRule('https://'+domain,state.rules||[])) || original;
   const daily=rule?.blocked&&rule.reason?.startsWith('Limite diário atingido');
-  set('heading',daily?'Seu limite de hoje chegou ao fim.':rule?.blocked?'Este acesso está em pausa.':'Seu acesso está disponível.');
+  set('heading',!state.connected?'Aguardando conexão com o painel.':daily?'Seu limite de hoje chegou ao fim.':rule?.blocked?'Este acesso está em pausa.':'Seu acesso está disponível.');
   set('site',domain||'');
   set('reason',rule?(rule.blocked?rule.reason:'Todas as regras permitem o acesso agora.'):'Consulte suas regras no painel do Vigília.');
   const used=rule?.windowQuota?rule.windowUsedSeconds:rule?.usedSeconds;
@@ -21,6 +22,11 @@ async function refresh() {
   set('status',state.connected?'Regras sincronizadas com o painel local.':'Sem conexão. O bloqueio permanece até reconectar.');
   target=state.connected&&domain&&!candidates.some(r=>r.blocked)?domain:null;
   document.getElementById('open').hidden=!target;
- } catch {set('status','Abra a extensão para conferir a conexão com o painel.');}
+ } catch {
+  target=null;
+  document.getElementById('open').hidden=true;
+  set('heading','Aguardando conexão com o painel.');
+  set('status','Abra a extensão para conferir a conexão com o painel.');
+ }
 }
 void refresh();setInterval(refresh,1000);

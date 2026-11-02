@@ -4,6 +4,7 @@ const browser = /Edg\//.test(navigator.userAgent) ? 'Edge' : 'Chrome';
 let port, snapshot = { rules: defaults }, connected = false, ready = false;
 let signature = '', pending = false, lastSent = 0, lastReceived = 0, applying = Promise.resolve();
 let reconnectAt = 0;
+let initialized;
 const redirects = new Map();
 async function showBlocked(tab, rules, url = tab.pendingUrl || tab.url) {
   const rule = matchingRule(url, rules);
@@ -16,7 +17,7 @@ async function showBlocked(tab, rules, url = tab.pendingUrl || tab.url) {
 }
 async function blockedNavigation(details) {
   if (details.frameId !== 0 || details.tabId < 0) return;
-  await initialized;
+  await initialize();
   if (!matchingRule(details.url, snapshot.rules)?.blocked) return;
   try {
     const tab = await chrome.tabs.get(details.tabId);
@@ -25,13 +26,16 @@ async function blockedNavigation(details) {
     await showBlocked(tab, snapshot.rules, details.url);
   } catch { /* Closed tab. The network block remains active. */ }
 }
-const initialized = (async () => {
+function initialize() {
+ if (!initialized) initialized = (async () => {
   const cached = await chrome.storage.local.get('rules');
   snapshot.rules = failClosed(cached.rules || defaults);
   await enforce(snapshot.rules);
   chrome.idle.setDetectionInterval(60);
   await chrome.alarms.create('reconnect', { periodInMinutes: 0.5 });
-})();
+ })().catch(error => { initialized = null; throw error; });
+ return initialized;
+}
 
 function enforce(rules) {
   // Serialize replacements so an older update cannot overwrite newer rules.
@@ -73,9 +77,11 @@ function connect() {
       if (!message.ok || !Array.isArray(message.rules)) throw new Error(message.error || 'Resposta inválida do painel.');
       snapshot = message;
       await enforce(message.rules);
+      if (port !== current) return;
       connected = true;
       // Cache configuration, never tab URLs or navigation history.
       const cached = await chrome.storage.local.get('rules');
+      if (port !== current) return;
       const rules = message.rules.map(({usedSeconds, windowUsedSeconds, ...r}) => r);
       if (JSON.stringify(cached.rules) !== JSON.stringify(rules)) await chrome.storage.local.set({ rules });
       await chrome.action.setBadgeText({ text: '' });
@@ -89,7 +95,7 @@ function connect() {
 }
 
 async function tick() {
-  await initialized;
+  await initialize();
   if (pending && Date.now() - lastSent > 5000) { port?.disconnect(); port = null; await disconnected('O painel local não respondeu.'); }
   connect();
   if (!port || pending) return;
@@ -106,20 +112,21 @@ async function tick() {
   } catch (e) { pending = false; await disconnected(e.message); }
 }
 
-chrome.tabs.onActivated.addListener(() => void tick());
-chrome.tabs.onUpdated.addListener((_id, change) => { if (change.url || change.status === 'complete') void tick(); });
-chrome.tabs.onRemoved.addListener(id => {redirects.delete(id);void tick();});
+const runTick = () => void tick().catch(console.error);
+chrome.tabs.onActivated.addListener(runTick);
+chrome.tabs.onUpdated.addListener((_id, change) => { if (change.url || change.status === 'complete') runTick(); });
+chrome.tabs.onRemoved.addListener(id => {redirects.delete(id);runTick();});
 // Navigation errors can replace the tab URL with Chrome's internal error
 // document before tabs.query sees it. The event retains the blocked URL.
-chrome.webNavigation.onBeforeNavigate.addListener(details => void blockedNavigation(details), {url:[{schemes:['http','https']}]});
+chrome.webNavigation.onBeforeNavigate.addListener(details => void blockedNavigation(details).catch(console.error), {url:[{schemes:['http','https']}]});
 chrome.webNavigation.onErrorOccurred.addListener(details => {
-  if (details.error === 'net::ERR_BLOCKED_BY_CLIENT') void blockedNavigation(details);
+  if (details.error === 'net::ERR_BLOCKED_BY_CLIENT') void blockedNavigation(details).catch(console.error);
 }, {url:[{schemes:['http','https']}]});
-chrome.windows.onFocusChanged.addListener(() => void tick());
-chrome.idle.onStateChanged.addListener(() => void tick());
-chrome.alarms.onAlarm.addListener(() => void tick());
+chrome.windows.onFocusChanged.addListener(runTick);
+chrome.idle.onStateChanged.addListener(runTick);
+chrome.alarms.onAlarm.addListener(runTick);
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === 'status') sendResponse({ ...snapshot, connected: connected && Date.now() - lastReceived < 6000, browser });
 });
-setInterval(() => void tick().catch(console.error), 1000);
-void tick().catch(console.error);
+setInterval(runTick, 1000);
+runTick();

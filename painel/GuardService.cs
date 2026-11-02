@@ -15,8 +15,9 @@ namespace FocoLocal {
   readonly string hosts=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),@"drivers\etc\hosts");
   GuardState state;string sid;string error="";
   public GuardService(){ServiceName="FocoLocalGuard";CanStop=true;CanShutdown=true;AutoLog=true;}
-  void Save(){string path=Path.Combine(root,"state.json"),temp=path+".tmp";File.WriteAllText(temp,GuardWire.Json.Serialize(state),new UTF8Encoding(false));if(File.Exists(path))File.Replace(temp,path,path+".bak");else File.Move(temp,path);}
-  protected override void OnStart(string[] args){sid=File.ReadAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"user.sid")).Trim();string path=Path.Combine(root,"state.json");state=File.Exists(path)?GuardWire.Json.Deserialize<GuardState>(File.ReadAllText(path)):new GuardState();if(state==null||state.pauses==null||state.held==null)throw new Exception("Estado inválido; backup preservado.");stopping=false;Tick(null);timer=new Timer(Tick,null,1000,1000);server=new Thread(Serve){IsBackground=true};server.Start();}
+  void Save(){Save(state);}
+  void Save(GuardState candidate){string path=Path.Combine(root,"state.json"),temp=path+".tmp";File.WriteAllText(temp,GuardStorage.Json.Serialize(candidate),new UTF8Encoding(false));if(File.Exists(path))File.Replace(temp,path,path+".bak");else File.Move(temp,path);}
+  protected override void OnStart(string[] args){sid=File.ReadAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"user.sid")).Trim();string path=Path.Combine(root,"state.json");state=File.Exists(path)?GuardStorage.Json.Deserialize<GuardState>(File.ReadAllText(path)):new GuardState();if(state==null||state.pauses==null||state.held==null)throw new Exception("Estado inválido; backup preservado.");stopping=false;Tick(null);timer=new Timer(Tick,null,1000,1000);server=new Thread(Serve){IsBackground=true};server.Start();}
   void Tick(object unused){lock(gate){try{if(stopping)return;UpdateHosts(false);error="";}catch(Exception ex){error=ex.Message;}}}
   void UpdateHosts(bool restoreOnly){
    double now=Engine.Stamp(DateTime.UtcNow);
@@ -43,7 +44,7 @@ namespace FocoLocal {
     listener=pipe;pipe.WaitForConnection();if(stopping)return;
     GuardReply reply;try{var request=GuardWire.Receive<GuardRequest>(pipe);lock(gate){
      if(request==null)throw new Exception("Pedido inválido.");
-     if(request.command=="request"){if(error!="")throw new Exception(error);var pause=GuardHosts.Request(state,request,DateTime.UtcNow);Save();reply=new GuardReply{ok=true,pause=pause};}
+     if(request.command=="request"){if(error!="")throw new Exception(error);state=GuardStorage.Accept(state,request,DateTime.UtcNow,Save);reply=new GuardReply{ok=true,pause=state.pauses.First(p=>p.id==request.id)};}
      else if(request.command=="cancel"){var pause=state.pauses.FirstOrDefault(p=>p.id==request.id);if(pause!=null){pause.cancelled=true;Save();UpdateHosts(false);}reply=new GuardReply{ok=true,pause=pause};}
      else if(request.command=="status")reply=new GuardReply{ok=error=="",error=error,pauses=state.pauses.ToList()};
      else throw new Exception("Comando inválido.");

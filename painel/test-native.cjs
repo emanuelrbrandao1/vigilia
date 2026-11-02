@@ -20,10 +20,10 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   await sleep(150);assert.equal((await chrome.send(false)).rules[0].usedSeconds,first.rules[0].usedSeconds);
   await edge.send(true);await sleep(150);const both=await edge.send(false);assert.ok(both.rules[0].usedSeconds>first.rules[0].usedSeconds);
   assert.equal((await chrome.send(false)).rules[0].usedSeconds,both.rules[0].usedSeconds);
-  assert.ok(both.seen.Chrome && both.seen.Edge);
+  for(const privateField of ['seen','ready','archivedRules','streakDays','streakLapses','streakDayKinds']) assert.equal(Object.hasOwn(both,privateField),false,privateField+' must remain local');
   assert.equal(both.rules[0].windowQuota,true);assert.ok(both.rules[0].windowUsedSeconds>0);
   assert.equal((await chrome.send(false)).rules[0].windowUsedSeconds,both.rules[0].windowUsedSeconds);
-  const saved=JSON.parse(fs.readFileSync(path.join(temp,'dados.json'),'utf8'));assert.equal(saved.version,8);assert.ok(Object.keys(saved.windowUsage).length>0);
-  console.log('PASS: native framing, pause, shared Chrome/Edge window quota, v1-to-v8 migration, persistence and connection status');
+  const saved=JSON.parse(fs.readFileSync(path.join(temp,'dados.json'),'utf8'));assert.equal(saved.version,8);assert.ok(Object.keys(saved.windowUsage).length>0);assert.ok(saved.seen.Chrome && saved.seen.Edge);
+  console.log('PASS: native framing, pause, shared Chrome/Edge window quota, v1-to-v8 migration, persistence and minimal browser payload');
  }finally{chrome.child.stdin.end();edge.child.stdin.end();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

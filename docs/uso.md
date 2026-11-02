@@ -29,9 +29,11 @@ Um minuto dentro da faixa consome um minuto das duas cotas, não dois minutos do
 
 Ao criar uma regra, ela aproveita o consumo conhecido do dia para seus domínios. Em dados antigos, sem detalhamento por domínio, o consumo só pode ser reaproveitado de uma regra com exatamente os mesmos domínios. Não é possível reconstruir quanto um único site consumiu dentro de um grupo antigo com vários sites. O total do painel usa contagem única para os novos intervalos e preserva o total anterior na migração.
 
-Depois de atualizar o aplicativo, clique em **Recarregar** na extensão do Chrome e do Edge para ativar a versão 1.3.0, que combina as regras também nas abas já abertas.
+Depois de atualizar o aplicativo, clique em **Recarregar** na extensão do Chrome e do Edge para ativar a versão atual. A combinação de regras nas abas já abertas está disponível desde a versão 1.3.0.
 
 Na versão 1.3.1, a navegação bloqueada abre a página do Vigília com motivo, consumo e renovação da cota, em vez do erro genérico do Chrome. A permissão `webNavigation` reconhece o início e o erro de navegação para encaminhar os sites configurados à página local. Não adiciona leitura do conteúdo de páginas nem gravação de histórico completo. O endereço mostrado nessa página contém apenas o domínio, sem caminho ou parâmetros da página original. Se o navegador pedir confirmação das permissões ao recarregar, confirme manualmente para ativar a nova versão. Em janelas privadas, permanece a página em branco por restrição do modo de execução da extensão.
+
+A versão 1.3.2 começa sem bloqueios pré-definidos em instalações novas, tenta novamente após um erro de inicialização e retira o botão de reabrir se a página perder comunicação com a extensão. Instalações existentes preservam as regras e o cache. A redução dos dados enviados ao navegador exige atualizar também o conector compilado.
 
 ## Alterações e estudo
 
@@ -47,9 +49,11 @@ Um pedido espera 30 minutos e libera 10 minutos de relógio, mesmo sem navegaç�
 
 Cancelar uma pausa não reinicia o prazo para outro pedido. Uma sessão de estudo ativa impede um novo pedido. A tela guarda pedidos antes de enviá-los ao serviço, para permitir conferência após falhas de comunicação. Pedidos sem confirmação não liberam a extensão. A reconciliação e a tentativa de confirmar cancelamentos pendentes ocorrem com a tela de pausa aberta.
 
-O serviço opcional `FocoLocalGuard` fica em `%ProgramFiles%\FocoLocalGuard`. Seus dados de recuperação ficam em `%ProgramData%\FocoLocalGuard`. Ele usa um canal local autorizado para o usuário da instalação e não abre porta de rede.
+O serviço opcional `FocoLocalGuard` fica em `%ProgramFiles%\FocoLocalGuard`. Seus dados de recuperação ficam em `%ProgramData%\FocoLocalGuard`. O painel conecta a um named pipe neste computador, cuja ACL autoriza o usuário da instalação e o sistema. Isso não substitui a rejeição explícita de clientes remotos nem a autenticação do servidor, ainda pendentes. Consulte [as limitações do serviço](../SECURITY.md).
 
 Durante uma pausa, o serviço remove somente as entradas correspondentes dentro do bloco `BLOQUEADOR-SIMPLES-LOCAL` no hosts e guarda o necessário para restaurá-las. Outros filtros, como DNS, permanecem independentes. O hosts não encerra conexões já estabelecidas, por isso a extensão continua necessária para bloquear uma aba aberta ao terminar a pausa. Uma falha persistente do serviço pode atrasar a restauração do hosts.
+
+O serviço limita pedidos simultâneos a 128 e reserva até 48 KiB para a resposta de estado. O limite que for atingido primeiro impede pedidos adicionais até expirarem os anteriores. O diário de restauração tem orçamento separado. Uma atualização do código ou da extensão não substitui automaticamente o serviço instalado em Program Files.
 
 Para remover o serviço, um administrador deve primeiro pará-lo, conferir a restauração do bloco no hosts e então excluir o serviço. Preserve os dados de recuperação até confirmar a restauração.
 

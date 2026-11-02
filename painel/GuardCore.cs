@@ -11,6 +11,18 @@ namespace FocoLocal {
  public class GuardReply {public bool ok;public string error;public Pause pause;public List<Pause> pauses;}
  public class HeldLine {public string line;public string domain;}
  public class GuardState {public List<Pause> pauses=new List<Pause>();public List<HeldLine> held=new List<HeldLine>();}
+ public static class GuardStorage {
+  // The restoration journal may contain hosts lines from a file up to 4 MiB.
+  // It must not share the much smaller IPC message budget.
+  public static readonly JavaScriptSerializer Json=new JavaScriptSerializer{MaxJsonLength=32*1024*1024};
+  public static GuardState Copy(GuardState state){return Json.Deserialize<GuardState>(Json.Serialize(state));}
+  public static GuardState Accept(GuardState state,GuardRequest request,DateTime utc,Action<GuardState> persist){
+   var candidate=Copy(state);
+   GuardHosts.Request(candidate,request,utc);
+   persist(candidate);
+   return candidate;
+  }
+ }
  public static class PauseRecovery {
   public static Pause Prepare(State s,Rule r,DateTime utc){var p=Engine.LatestPause(s,r);if(p!=null&&p.confirmationPending&&!p.cancelled&&!p.cancelRequested)return p;p=Engine.RequestPause(s,r,utc);p.windowsManaged=true;p.confirmationPending=true;return p;}
   public static void Merge(State s,IEnumerable<Pause> remote){if(remote==null)return;foreach(var item in remote){var serializer=new JavaScriptSerializer();var p=serializer.Deserialize<Pause>(serializer.Serialize(item));p.windowsManaged=true;p.confirmationPending=false;int index=s.pauses.FindIndex(x=>x.id==p.id);if(index>=0){p.cancelled=p.cancelled||s.pauses[index].cancelled;p.cancelRequested=!p.cancelled&&s.pauses[index].cancelRequested;s.pauses[index]=p;}else s.pauses.Add(p);}}
@@ -49,7 +61,14 @@ namespace FocoLocal {
    var existing=state.pauses.FirstOrDefault(p=>p.id==request.id);if(existing!=null)return existing;
    if(request.domains==null||request.domains.Length<1||request.domains.Length>32)throw new Exception("Domínios inválidos.");
    var r=new Rule{domains=Engine.PauseDomains(request.domains)};
-   var local=new State{pauses=state.pauses};var pause=Engine.RequestPause(local,r,utc);pause.id=request.id;return pause;
+   // Admission is transactional: a rejected request must leave the current
+   // restoration state usable. Reserve room for the complete status reply.
+   var local=new State{pauses=new List<Pause>(state.pauses)};
+   var pause=Engine.RequestPause(local,r,utc);pause.id=request.id;
+   if(local.pauses.Count>128 || Encoding.UTF8.GetByteCount(GuardStorage.Json.Serialize(new GuardReply{ok=true,pauses=local.pauses}))>48*1024)
+    throw new Exception("Limite de pedidos simultâneos atingido. Aguarde os pedidos anteriores expirarem.");
+   state.pauses=local.pauses;
+   return pause;
   }
  }
  public static class GuardWire {

@@ -108,6 +108,25 @@ namespace FocoLocal {
    rejected=false;try{GuardHosts.Request(guard,new GuardRequest{id=Guid.NewGuid().ToString("N"),domains=new[]{"twitter.com"}},utc.AddHours(1));}catch{rejected=true;}Check(rejected,"Service independently enforces alias cooldown");
    rejected=false;try{GuardHosts.Transform(GuardHosts.Begin+"\r\n",guard,gp.endsAt,false);}catch{rejected=true;}Check(rejected,"Malformed hosts block fails without modifying file");
    string absent=GuardHosts.Transform("127.0.0.1 localhost\r\n",guard,gp.endsAt,false);Check(absent.Contains("0.0.0.0 x.com"),"Journal restores captured entries if marked block was removed");
+   // A saturated IPC budget must never poison the restoration journal.
+   var bounded=new GuardState();int admitted=0;
+   for(int i=0;i<300;i++){
+    var before=GuardStorage.Json.Serialize(bounded);
+    try{GuardHosts.Request(bounded,new GuardRequest{id=Guid.NewGuid().ToString("N"),domains=new[]{"site"+i+".example.com"}},utc);admitted++;}
+    catch{Check(GuardStorage.Json.Serialize(bounded)==before,"Rejected service request leaves state unchanged");break;}
+   }
+   Check(admitted>0&&admitted<300,"Service bounds outstanding requests");
+   Check(System.Text.Encoding.UTF8.GetByteCount(GuardWire.Json.Serialize(new GuardReply{ok=true,pauses=bounded.pauses}))<=65536,"Accepted status fits IPC byte limit");
+   for(int i=0;i<2000;i++)bounded.held.Add(new HeldLine{domain="sub"+i+".example.com",line="0.0.0.0 sub"+i+".example.com"});
+   var largeJournal=GuardStorage.Copy(bounded);
+   Check(largeJournal.held.Count==2000&&GuardStorage.Json.Serialize(largeJournal).Length>65536,"Restoration journal survives beyond IPC size limit");
+   var pristine=new GuardState();rejected=false;
+   try{GuardStorage.Accept(pristine,new GuardRequest{id=Guid.NewGuid().ToString("N"),domains=new[]{"example.com"}},utc,candidate=>{throw new System.IO.IOException("Disk full");});}catch(System.IO.IOException){rejected=true;}
+   Check(rejected&&pristine.pauses.Count==0,"Failed disk commit does not activate service pause in memory");
+   var pruned=GuardStorage.Accept(bounded,new GuardRequest{id=Guid.NewGuid().ToString("N"),domains=new[]{"new.example.com"}},utc.AddDays(2),candidate=>{});
+   Check(pruned.pauses.Count==1&&pruned.held.Count==2000,"Expired requests pruned without dropping held restoration lines");
+   string browserPayload=Store.Json.Serialize(Engine.BrowserView(pausing,utc));
+   Check(!browserPayload.Contains("archivedRules")&&!browserPayload.Contains("streak")&&!browserPayload.Contains("seen"),"Browser snapshot excludes private journal and archived rules");
    checks+=ChangeTests.Run();Console.WriteLine(checks+" checks passed.");
   }
  }

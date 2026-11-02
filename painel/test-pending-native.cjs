@@ -15,7 +15,7 @@ async function run(data){
  const rule={id:'test',name:'Pending test',domains:['example.com'],always:true,minutes:30,start:0,end:0,days:127};
  const pending={ruleId:'test',kind:'archive',requestedAt:now-86401,executeAt:now-1};
  const expired={version:4,rules:[rule],pendingChanges:[pending]};
- const result=await run(expired);assert.equal(result.rules.length,0);assert.equal(result.archivedRules.length,1);
+ const result=await run(expired);assert.equal(result.rules.length,0);assert.equal(Object.hasOwn(result,'archivedRules'),false);
  const saved=JSON.parse(fs.readFileSync(path.join(root,'dados.json'),'utf8'));assert.equal(saved.version,8);assert.equal(saved.pendingChanges.length,0);assert.equal(saved.rules[0].archived,true);
  const restored=await run(saved);assert.equal(restored.rules.length,0);
  const future={version:4,rules:[rule],pendingChanges:[{...pending,executeAt:now+86400}]};

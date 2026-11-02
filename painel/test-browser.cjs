@@ -1,5 +1,5 @@
 const {chromium}=require('playwright');
-const path=require('node:path'),fs=require('node:fs'),os=require('node:os');
+const path=require('node:path'),fs=require('node:fs'),os=require('node:os'),assert=require('node:assert/strict');
 (async()=>{
  const extension=path.join(__dirname,'extensao');
  const chromeBrowser=process.env.FOCO_TEST_BROWSER==='chrome';
@@ -9,13 +9,24 @@ const path=require('node:path'),fs=require('node:fs'),os=require('node:os');
   if(chromeBrowser){const session=await context.browser().newBrowserCDPSession();console.log(await session.send('Extensions.loadUnpacked',{path:extension}));}
   let worker=context.serviceWorkers()[0];if(!worker)worker=await context.waitForEvent('serviceworker',{timeout:12000});
   console.log('Extension worker: '+worker.url());
-  const result=await worker.evaluate(async()=>{
-   for(let i=0;i<20;i++) {const rules=await chrome.declarativeNetRequest.getDynamicRules();if(rules.length)return {rules,manifest:chrome.runtime.getManifest().name};await new Promise(r=>setTimeout(r,250));}
-   throw new Error('No rules installed');
-  });console.log(JSON.stringify(result));
   const page=await context.newPage();
   const popup='chrome-extension://'+fs.readFileSync(path.join(__dirname,'extension-id.txt'),'utf8').trim()+'/popup.html';
-  await page.goto(popup);await page.waitForTimeout(1800);console.log(await page.locator('#connection').textContent());
+  await page.goto(popup);
+  let status;
+  for(let attempt=0;attempt<60;attempt++){
+   status=await page.evaluate(async()=>{
+   const snapshot=await chrome.runtime.sendMessage({type:'status'});
+   if(!snapshot.connected)return false;
+   const rules=await chrome.declarativeNetRequest.getDynamicRules();
+   const expected=[...new Set(snapshot.rules.filter(r=>r.blocked).flatMap(r=>r.domains))].length;
+   if(rules.length!==expected)return false;
+   return {connected:snapshot.connected,activeRules:snapshot.rules.length,networkRules:rules.length};
+   });
+   if(status)break;
+   await page.waitForTimeout(250);
+  }
+  assert.equal(status?.connected,true,'Native connector must connect and apply matching network rules');
+  console.log(JSON.stringify(status));
   await page.screenshot({path:path.join(__dirname,'preview-extensao.png')});
  }finally{await context.close();}
 })().catch(e=>{console.error(e.message);process.exitCode=1;});

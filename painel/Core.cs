@@ -215,6 +215,12 @@ namespace FocoLocal {
    }
    return new Snapshot {monitoredSeconds=s.monitoredSeconds??0,day=s.day, seen=s.seen,ready=s.ready,streakDays=Streak.Current(s,local),streakBest=Streak.Best(s,local),streakTracking=s.streakTracking,streakLapses=s.streakLapses.ToList(),streakDayKinds=new Dictionary<string,int>(s.streakDayKinds),rules=rows,archivedRules=s.rules.Where(r=>r.archived).Select(row).ToList()};
   }
+  // The browser only needs active enforcement rules. Keep the journal,
+  // archived configuration and other browsers' activity in the desktop app.
+  public static object BrowserView(State s,DateTime utc) {
+   var view=View(s,utc);
+   return new {ok=true,day=view.day,rules=view.rules};
+  }
  }
  public static class Streak {
   public const int NoUse=0,WithinPause=1,OutsidePause=2,LegacyUnknown=3,Untracked=-1;

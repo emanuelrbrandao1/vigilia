@@ -15,11 +15,17 @@ const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
   const loaded=await session.send('Extensions.loadUnpacked',{path:extension});
   const id=loaded.id||fs.readFileSync(path.join(__dirname,'extension-id.txt'),'utf8').trim();
   const statusPage=await context.newPage();await statusPage.goto('chrome-extension://'+id+'/popup.html');
-  await statusPage.waitForFunction(async target=>{
+  let blocked=false;
+  for(let attempt=0;attempt<60;attempt++){
+   blocked=await statusPage.evaluate(async target=>{
    const state=await chrome.runtime.sendMessage({type:'status'});
    const host=new URL(target).hostname;
    return state.connected&&state.rules.some(r=>r.blocked&&r.domains.some(d=>host===d||host.endsWith('.'+d)));
-  },target,{timeout:15000});
+   },target);
+   if(blocked)break;
+   await statusPage.waitForTimeout(250);
+  }
+  assert.equal(blocked,true,'Configured target must be blocked by the connected native host');
   const page=await context.newPage();try{await page.goto(target,{timeout:10000});}catch{}
   for(let attempt=0;attempt<60;attempt++){
    if(page.url().startsWith('chrome-extension://'+id+'/blocked.html')){

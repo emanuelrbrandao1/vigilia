@@ -1,5 +1,7 @@
 # Vigília
 
+[![Testes no Windows](https://github.com/emanuelrbrandao1/vigilia/actions/workflows/tests.yml/badge.svg)](https://github.com/emanuelrbrandao1/vigilia/actions/workflows/tests.yml)
+
 O Vigília cria uma barreira inicial mínima às distrações digitais: uma pequena pausa entre o impulso de abrir um site e a decisão de acessá-lo. O objetivo é aumentar a produtividade e o rendimento, além de ter mais tempo disponível para a vida real.
 
 O projeto surgiu da inspiração em aplicações como o Cold Turkey e em extensões de bloqueio de sites. Ao explorar essas ferramentas, percebi algumas limitações em relação ao que buscava para minha rotina e decidi desenvolver uma solução personalizada, com regras e recursos que atendessem às minhas necessidades.
@@ -9,6 +11,8 @@ Você define os horários, as cotas de uso e os períodos de foco que fazem sent
 ![Painel do Vigília com regras e histórico fictícios](docs/painel-demo.png)
 
 A imagem usa dados de demonstração. O projeto está em fase de protótipo e a instalação é manual.
+
+Para avaliar a implementação, consulte as [decisões técnicas e a revisão de funcionamento](docs/engenharia.md). O serviço que altera o hosts é opcional e ainda tem [limitações de segurança conhecidas](SECURITY.md).
 
 ## O que ele faz
 
@@ -86,9 +90,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Testar.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\Testar-Mudancas.ps1
 ```
 
-O motor possui 195 verificações, incluindo regras combinadas para o mesmo domínio, faixas que cruzam a meia-noite, consumo compartilhado, alterações pendentes, recuperação de pausas e migração do histórico. Os prazos longos são testados com relógio simulado. Os testes de hosts não alteram o arquivo hosts real.
+O motor possui 202 verificações, incluindo regras combinadas para o mesmo domínio, faixas que cruzam a meia-noite, consumo compartilhado, alterações pendentes, recuperação de pausas e migração do histórico. A extensão tem sete cenários automatizados, incluindo erro transitório ao iniciar e perda de comunicação na página de bloqueio. Os prazos longos são testados com relógio simulado. Os testes de hosts não alteram o arquivo hosts real.
 
-Há também um teste opcional com navegador real. Instale o Playwright (`npm install --no-save playwright`) e execute `node painel/test-browser.cjs`. Ele exige Chrome ou Edge instalado e o conector já registrado, e lê as regras da instalação registrada em um perfil temporário. Não deve ser usado como teste isolado de dados pessoais. Use `FOCO_TEST_BROWSER=chrome` para Chrome, ou deixe sem essa variável para Edge.
+Há também um teste opcional com navegador real. Instale o Playwright (`npm install --no-save --package-lock=false playwright`) e execute `node painel/test-browser.cjs`. Ele exige Chrome ou Edge instalado e o conector já registrado. Usa um perfil temporário, mas comunica-se com a instalação registrada e atualiza seu estado de conexão. Não é um teste isolado de dados pessoais. Aceita uma instalação sem regras, verificando a conexão e a correspondência entre regras recebidas e aplicadas. Use `FOCO_TEST_BROWSER=chrome` para Chrome, ou deixe sem essa variável para Edge.
 
 Para conferir a página de bloqueio no Chrome, defina `FOCO_TEST_BLOCKED_URL` com um endereço já bloqueado na instalação registrada e execute `node painel/test-blocked-browser.cjs`. Ele abre um perfil temporário, confirma o encaminhamento à página do Vigília e verifica que o botão de reabrir continua oculto. Não altera regras nem instala a extensão no perfil pessoal.
 

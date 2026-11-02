@@ -25,7 +25,7 @@ namespace FocoLocal {
      result=Store.With(s=> {
       Engine.Charge(s,previousHost,previousTime,stamp,now);
       s.seen[message.browser]=stamp; s.ready[message.browser]=message.ready;
-      return Engine.View(s,now);
+      return Engine.BrowserView(s,now);
      },true);
      previousTime=stamp; previousHost=host;
     } catch(Exception e) { previousHost=""; result=new {ok=false,error=e.Message}; }
