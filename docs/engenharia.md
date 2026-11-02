@@ -41,7 +41,7 @@ Os testes de navegador confirmaram conexão e correspondência das regras em per
 ## Pendências que afetam a maturidade
 
 - Resolver as limitações do [serviço privilegiado](../SECURITY.md) antes de apresentá-lo como componente pronto para distribuição ampla.
-- Separar e formatar métodos longos, principalmente em `Core.cs`, `Changes.cs` e formulários. Há lógica coberta por testes, mas a concentração em linhas extensas dificulta revisão e manutenção.
+- A refatoração de legibilidade foi aplicada ao motor, às alterações, aos formulários, ao serviço, ao conector e à extensão. Consulte a [análise, plano e validação](refatoracao.md). A lógica de cotas e concorrência ainda exige atenção nas próximas alterações.
 - Criar um teste de navegador com conector e dados inteiramente isolados, executável na CI. Hoje há testes de protocolo e navegador em caminhos separados.
 - Validar instalação, atualização, desinstalação, escalas de tela e recuperação em uma máquina Windows limpa. A compilação isolada não comprova toda essa experiência.
 - Definir política de retenção, localização dos dados e recuperação de arquivo corrompido. A leitura atual falha sem sobrescrever o arquivo inválido, mas não recupera automaticamente o backup.
