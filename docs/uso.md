@@ -13,7 +13,11 @@ Escolha o modo:
 
 Horários iguais significam o dia inteiro. Numa faixa de 22h a 6h, o dia selecionado é o de início. O consumo dessa faixa não reinicia à meia-noite. O valor zero significa ausência de cota diária nos modos que o aceitam.
 
-O painel pode ficar fechado. A extensão precisa permanecer conectada ao conector para receber regras novas. Quando a conexão falha, ela bloqueia os sites já configurados até reconectar.
+O painel pode ficar fechado. A extensão precisa permanecer conectada ao conector para receber regras novas. Se a conexão cair por pouco tempo (o navegador reinicia a extensão em segundo plano ou o arquivo de dados fica ocupado por alguns segundos), ela mantém por até 90 segundos as últimas decisões recebidas: o que estava bloqueado continua bloqueado e o que estava liberado continua liberado, enquanto reconecta. Nesse intervalo o uso não é contado. Essa tolerância vale uma vez a cada 10 minutos: outra queda nesse período bloqueia na hora. Depois de 90 segundos sem o painel, todos os sites configurados ficam bloqueados até reconectar.
+
+Quando a extensão bloqueia uma aba, a página do Vigília guarda o endereço completo. Se o bloqueio foi só de conexão, a aba volta sozinha para a mesma página (o mesmo vídeo ou post) quando a conexão retorna; nos outros casos, o botão de abrir leva à página exata, e não à inicial do site.
+
+No popup da extensão, os limites de tempo (cota diária, cota por faixa e horários) aparecem primeiro e os bloqueios permanentes por último.
 
 ### Combinar limite por faixa com limite diário
 
@@ -42,6 +46,8 @@ Reduzir a cota ou aumentar a restrição é imediato. Aumentar o tempo, remover 
 O botão **Pendentes** permite revisar ou cancelar pedidos. Há um pedido por regra. Substituir uma proposta por outra diferente reinicia a espera. Uma restrição imediata cancela a proposta anterior dessa regra. Reativar uma regra arquivada é imediato e preserva o consumo do período.
 
 Em **Sessão de estudo**, selecione os sites e a duração. O prazo continua correndo com o painel fechado ou o computador suspenso. Ao terminar, as demais regras voltam a determinar o acesso.
+
+Enquanto a sessão está ativa, ela aparece no cabeçalho do painel ("Sessão de estudo até HH:mm · faltam …"), no botão ("Estudo até HH:mm"), no título da janela, no topo do popup da extensão e na página de bloqueio, que informa quando a sessão termina. Os sites incluídos mostram o motivo "Sessão de estudo até …".
 
 ## Pausas de bloqueios permanentes
 
