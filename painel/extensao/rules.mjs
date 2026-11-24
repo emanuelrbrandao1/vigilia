@@ -18,4 +18,22 @@ export function networkRules(rules) {
     condition: { urlFilter: '||' + domain + '^', resourceTypes: ['main_frame', 'sub_frame'] }
   }));
 }
-export function failClosed(rules) { return rules.map(r => ({ ...r, blocked: true, reason: 'Painel local desconectado' })); }
+export const OFFLINE_REASON = 'Painel local desconectado';
+export function failClosed(rules) { return rules.map(r => ({ ...r, blocked: true, reason: OFFLINE_REASON })); }
+// Time limits change during the day, so they come first; permanent blocks go last.
+export function displayOrder(rules) {
+  return rules.map((rule, index) => ({ rule, index }))
+    .sort((a, b) => Number(!!a.rule.always) - Number(!!b.rule.always) || a.index - b.index)
+    .map(item => item.rule);
+}
+export function studySession(rules, now = Date.now()) {
+  const studying = rules.filter(rule => rule.focusUntil * 1000 > now);
+  if (!studying.length) return null;
+  return { until: Math.max(...studying.map(rule => rule.focusUntil)) * 1000, rules: studying };
+}
+const pad = value => String(value).padStart(2, '0');
+export function clockTime(ms) { const date = new Date(ms); return pad(date.getHours()) + ':' + pad(date.getMinutes()); }
+export function remaining(ms) {
+  const minutes = Math.max(1, Math.ceil(ms / 60000));
+  return minutes >= 60 ? Math.floor(minutes / 60) + 'h ' + pad(minutes % 60) + 'min' : minutes + ' min';
+}

@@ -1,8 +1,17 @@
-import { defaults, hostname, matchingRule, networkRules, failClosed } from './rules.mjs';
+import { defaults, hostname, matchingRule, networkRules, failClosed, OFFLINE_REASON } from './rules.mjs';
 
 const browser = /Edg\//.test(navigator.userAgent) ? 'Edge' : 'Chrome';
 const RECONNECT_DELAY_MS = 5000;
-const RESPONSE_TIMEOUT_MS = 5000;
+// dados.json can be busy for a few seconds (OneDrive, antivirus); that is not an outage.
+const RESPONSE_TIMEOUT_MS = 15000;
+// A short outage keeps the last synchronized decisions instead of blocking every
+// configured site at once and throwing open tabs out of their pages. Longer outages still fail closed.
+const OFFLINE_GRACE_MS = 90000;
+// One grace period per 10 minutes: repeated drops, or a connector closed on purpose,
+// cannot keep a site usable while its time is not being counted.
+const GRACE_COOLDOWN_MS = 600000;
+const SYNC_PERSIST_MS = 15000;
+const MAX_RETURN_URL = 2000;
 const STATUS_FRESHNESS_MS = 6000;
 const REDIRECT_DEBOUNCE_MS = 2000;
 const IDLE_SECONDS = 60;
@@ -14,15 +23,46 @@ let signature = '';
 let pending = false;
 let lastSent = 0;
 let lastReceived = 0;
+let lastSynced = 0;
+let persistedSync = 0;
+let closed = true;
+let graceStartedAt = 0;
+let graceMono = -Infinity;
 let applying = Promise.resolve();
 let reconnectAt = 0;
 let initialized;
 const redirects = new Map();
 
+const monotonic = () => (typeof performance === 'object' ? performance.now() : Date.now());
+
+function recentlySynced() {
+  const elapsed = Date.now() - lastSynced;
+  // A clock moved backwards must not make old decisions look fresh.
+  return lastSynced > 0 && elapsed >= -5000 && elapsed < OFFLINE_GRACE_MS;
+}
+
+async function startGrace() {
+  const since = Date.now() - graceStartedAt;
+  // A start time in the future (clock moved backwards) also denies a new grace period.
+  if (!recentlySynced() || (graceStartedAt > 0 && !(since >= GRACE_COOLDOWN_MS))) return false;
+  graceStartedAt = Date.now();
+  graceMono = monotonic();
+  await chrome.storage.local.set({ graceStartedAt });
+  return true;
+}
+
+// Measured with a monotonic clock, so changing the system time cannot stretch it.
+function withinGrace() {
+  return monotonic() - graceMono < OFFLINE_GRACE_MS;
+}
+
 function blockedPageUrl(tab, rule, url) {
   if (tab.incognito) return 'about:blank';
+  // The full address lets the page return to the same video or post. It stays in this tab only.
+  const from = /^https?:/i.test(url || '') && url.length <= MAX_RETURN_URL ? '&from=' + encodeURIComponent(url) : '';
+  const why = rule.reason === OFFLINE_REASON ? '&why=offline' : '';
   return chrome.runtime.getURL('blocked.html')
-    + '?site=' + encodeURIComponent(hostname(url))
+    + '?site=' + encodeURIComponent(hostname(url)) + from + why
     + '#' + encodeURIComponent(rule.id);
 }
 
@@ -65,8 +105,15 @@ function initialize() {
 }
 
 async function initializeRules() {
-  const cached = await chrome.storage.local.get('rules');
-  snapshot.rules = failClosed(cached.rules || defaults);
+  const cached = await chrome.storage.local.get(['rules', 'syncedAt', 'graceStartedAt']);
+  lastSynced = Number(cached.syncedAt) || 0;
+  persistedSync = lastSynced;
+  graceStartedAt = Number(cached.graceStartedAt) || 0;
+  const rules = cached.rules || defaults;
+  // A restarted service worker resumes the last decisions only if they are recent
+  // and the grace budget allows it; otherwise it fails closed as before.
+  closed = !(await startGrace());
+  snapshot.rules = closed ? failClosed(rules) : rules;
   await enforce(snapshot.rules);
   chrome.idle.setDetectionInterval(IDLE_SECONDS);
   await chrome.alarms.create('reconnect', { periodInMinutes: 0.5 });
@@ -98,15 +145,30 @@ function enforce(rules) {
   return applying;
 }
 
-async function disconnected(error) {
-  connected = false;
-  ready = false;
-  pending = false;
+async function failClose(error) {
+  closed = true;
   snapshot = { ...snapshot, error, rules: failClosed(snapshot.rules) };
   await chrome.action.setBadgeText({ text: '!' });
   await chrome.action.setBadgeBackgroundColor({ color: '#a34637' });
   await enforce(snapshot.rules);
   ready = false;
+}
+
+async function disconnected(error) {
+  const wasConnected = connected;
+  connected = false;
+  ready = false;
+  pending = false;
+  snapshot = { ...snapshot, error };
+  // Another notice about the same outage keeps the grace period already running.
+  if (!closed && !wasConnected && withinGrace()) return;
+  if (closed || !(await startGrace())) {
+    await failClose(error);
+    return;
+  }
+  // Keep the last synchronized rules while reconnecting.
+  await chrome.action.setBadgeText({ text: '…' });
+  await chrome.action.setBadgeBackgroundColor({ color: '#6b6e78' });
 }
 
 async function receiveSnapshot(current, message) {
@@ -120,12 +182,18 @@ async function receiveSnapshot(current, message) {
     await enforce(message.rules);
     if (port !== current) return;
     connected = true;
+    closed = false;
+    lastSynced = Date.now();
     // Cache configuration, never tab URLs or navigation history.
-    const cached = await chrome.storage.local.get('rules');
+    const cached = await chrome.storage.local.get(['rules']);
     if (port !== current) return;
     const rules = message.rules.map(({ usedSeconds, windowUsedSeconds, ...rule }) => rule);
-    if (JSON.stringify(cached.rules) !== JSON.stringify(rules)) {
-      await chrome.storage.local.set({ rules });
+    const update = {};
+    if (JSON.stringify(cached.rules) !== JSON.stringify(rules)) update.rules = rules;
+    if (update.rules || lastSynced - persistedSync >= SYNC_PERSIST_MS) update.syncedAt = lastSynced;
+    if (update.syncedAt) {
+      await chrome.storage.local.set(update);
+      persistedSync = update.syncedAt;
     }
     await chrome.action.setBadgeText({ text: '' });
   } catch (error) {
@@ -168,6 +236,7 @@ async function tick() {
     port = null;
     await disconnected('O painel local não respondeu.');
   }
+  if (!connected && !closed && !withinGrace()) await failClose(snapshot.error || OFFLINE_REASON);
   connect();
   if (!port || pending) return;
   pending = true;
@@ -207,6 +276,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     sendResponse({
       ...snapshot,
       connected: connected && Date.now() - lastReceived < STATUS_FRESHNESS_MS,
+      reconnecting: !connected && !closed,
       browser
     });
   }

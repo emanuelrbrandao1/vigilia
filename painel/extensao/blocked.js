@@ -1,8 +1,14 @@
-import { hostname, matchingRule, matches } from './rules.mjs';
+import { hostname, matchingRule, matches, clockTime } from './rules.mjs';
 
 let target;
-const requestedSite = new URLSearchParams(location.search).get('site') || '';
+let returned = false;
+const params = new URLSearchParams(location.search);
+const requestedSite = params.get('site') || '';
 const site = hostname('https://' + requestedSite) === requestedSite ? requestedSite : '';
+// Only an http(s) address of the blocked site itself can be reopened.
+const requestedFrom = params.get('from') || '';
+const from = site && /^https?:/i.test(requestedFrom) && hostname(requestedFrom) === site ? requestedFrom : '';
+const offline = params.get('why') === 'offline';
 
 function setText(id, text) {
   const node = document.getElementById(id);
@@ -35,6 +41,7 @@ function usageText(rule) {
 }
 
 function resumeText(rule, daily) {
+  if (rule?.blocked && rule.focusUntil * 1000 > Date.now()) return 'A sessão de estudo termina às ' + clockTime(rule.focusUntil * 1000) + '. As outras regras continuam valendo.';
   if (daily) return 'O limite diário renova à meia-noite do computador. As outras regras continuam valendo.';
   if (rule?.windowQuota) return 'A cota renova na próxima faixa. Outras regras também podem restringir o acesso.';
   if (rule?.always) return 'Este site tem um bloqueio permanente. Consulte as opções de pausa no painel.';
@@ -57,8 +64,14 @@ function renderStatus(state) {
   setText('status', state.connected
     ? 'Regras sincronizadas com o painel local.'
     : 'Sem conexão. O bloqueio permanece até reconectar.');
-  target = state.connected && domain && !candidates.some(candidate => candidate.blocked) ? domain : null;
+  const available = state.connected && domain && !candidates.some(candidate => candidate.blocked);
+  target = available ? (from || 'https://' + domain) : null;
   document.getElementById('open').hidden = !target;
+  // A block caused only by a lost connection ends by itself: go back to the exact page.
+  if (offline && target && !returned) {
+    returned = true;
+    location.replace(target);
+  }
 }
 
 function renderDisconnected() {
@@ -79,7 +92,7 @@ async function refresh() {
 
 document.getElementById('back').onclick = () => history.length > 1 ? history.back() : window.close();
 document.getElementById('open').onclick = () => {
-  if (target) location.href = 'https://' + target;
+  if (target) location.href = target;
 };
 void refresh();
 setInterval(refresh, 1000);
