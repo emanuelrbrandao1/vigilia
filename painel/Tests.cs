@@ -117,7 +117,7 @@ namespace FocoLocal
             r.end = 6 * 60;
             Check(Engine.Reason(r, s, monday.Date.AddDays(1).AddHours(5)) == "Horário de bloqueio", "Block mode overnight");
             Engine.StartFocus(s, new[] { r.id }, 120, monday.ToUniversalTime());
-            Check(Engine.Reason(r, s, monday.AddMinutes(119)).StartsWith("Sessão de foco"), "Study blocks for two hours");
+            Check(Engine.Reason(r, s, monday.AddMinutes(119)).StartsWith("Sessão de estudo"), "Study blocks for two hours");
             Check(Engine.Reason(r, s, monday.AddMinutes(120)) == "Permitido agora", "Study expires exactly on deadline");
             double deadline = r.focusUntil;
             Engine.StartFocus(s, new[] { r.id }, 60, monday.ToUniversalTime());
@@ -219,7 +219,7 @@ namespace FocoLocal
             Engine.Charge(s, "example.com", now - 1, now, boundary.ToUniversalTime());
             Check(Engine.WindowUsed(q, s, boundary) == 1, "Exact midnight sample retains previous window second");
             Engine.StartFocus(s, new[] { q.id }, 120, boundary.ToUniversalTime());
-            Check(Engine.Reason(q, s, boundary).StartsWith("Sessão de foco"), "Study block takes priority over window allowance");
+            Check(Engine.Reason(q, s, boundary).StartsWith("Sessão de estudo"), "Study block takes priority over window allowance");
             var restoredQuota = Store.Json.Deserialize<State>(Store.Json.Serialize(s));
             Check(restoredQuota.rules[0].windowQuota && restoredQuota.windowUsage.Count == 1, "Window quotas survive persistence");
             q.minutes = 0;

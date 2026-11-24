@@ -1,3 +1,19 @@
+import { displayOrder, studySession, clockTime, remaining } from './rules.mjs';
+
+function setText(selector, text) {
+  const node = document.querySelector(selector);
+  if (node.textContent !== text) node.textContent = text;
+}
+
+function renderStudy(rules) {
+  const box = document.querySelector('#study');
+  const session = studySession(rules);
+  box.hidden = !session;
+  if (!session) return;
+  setText('#study-title', 'Sessão de estudo até ' + clockTime(session.until));
+  setText('#study-detail', 'Faltam ' + remaining(session.until - Date.now()) + ' · ' + session.rules.map(rule => rule.name).join(', '));
+}
+
 function appendUsage(card, rule) {
   if (!(rule.minutes > 0) || rule.always) return;
   const used = rule.windowQuota ? rule.windowUsedSeconds : rule.usedSeconds;
@@ -35,12 +51,15 @@ function ruleCard(rule) {
 function renderStatus(state) {
   const connection = state.connected
     ? state.browser + ' conectado · cota compartilhada'
-    : 'Sem conexão. Os sites configurados permanecem bloqueados.';
+    : state.reconnecting
+      ? 'Reconectando ao painel… as regras atuais continuam valendo.'
+      : 'Sem conexão. Os sites configurados permanecem bloqueados.';
   const label = document.querySelector('#connection');
   if (label.textContent !== connection) label.textContent = connection;
   const list = document.querySelector('#rules');
   list.replaceChildren();
-  for (const rule of state.rules || []) list.append(ruleCard(rule));
+  renderStudy(state.rules || []);
+  for (const rule of displayOrder(state.rules || [])) list.append(ruleCard(rule));
   if (!state.rules?.length) {
     const empty = document.createElement('p');
     empty.textContent = 'Nenhuma regra ativa. Adicione uma no painel.';

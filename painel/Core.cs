@@ -278,7 +278,7 @@ namespace FocoLocal
             if (r.always)
                 return "Bloqueio permanente";
             if (r.focusUntil > Stamp(local.ToUniversalTime()))
-                return "Sessão de foco até " + Epoch.AddSeconds(r.focusUntil).ToLocalTime().ToString("dd/MM HH:mm");
+                return "Sessão de estudo até " + Epoch.AddSeconds(r.focusUntil).ToLocalTime().ToString("dd/MM HH:mm");
             if (r.windowQuota)
             {
                 if (InWindow(r, local) && WindowUsed(r, s, local) >= r.minutes * 60)

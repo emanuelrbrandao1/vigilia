@@ -33,7 +33,7 @@ namespace FocoLocal
             };
             foreach (var r in rules)
             {
-                string status = r.focusUntil > Engine.Stamp(DateTime.UtcNow) ? " · foco até " +
+                string status = r.focusUntil > Engine.Stamp(DateTime.UtcNow) ? " · estudo até " +
                     Engine.Epoch.AddSeconds(r.focusUntil).ToLocalTime().ToString("dd/MM HH:mm") : r.always ?
                     " · bloqueio permanente já ativo" : "";
                 sites.Items.Add(r.name + status, r.id == selected);

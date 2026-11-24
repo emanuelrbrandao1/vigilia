@@ -11,7 +11,7 @@ namespace FocoLocal
     {
         readonly Font siteFont = new Font("Segoe UI", 11, FontStyle.Bold);
         DataGridView grid;
-        Label connection, summary, ruleCount, legacy, selection, empty;
+        Label connection, summary, ruleCount, legacy, selection, empty, intro;
         Timer refresh;
         Snapshot snapshot;
         ToggleButton showArchived;
@@ -93,7 +93,8 @@ namespace FocoLocal
             header.Controls.Add(new LogoControl { Location = new Point(0, 9), Size = new Size(56, 56) });
             var brand = Theme.Label("V I G Í L I A", 76, 3, 580, 48, 29, false);
             header.Controls.Add(brand);
-            var intro = Theme.Label("Foco local. Tempo sob controle.", 78, 56, 550, 28, 11, false);
+            intro = Theme.Label(IntroText, 78, 56, 560, 28, 11, false);
+            intro.AutoEllipsis = true;
             intro.ForeColor = Theme.Muted;
             header.Controls.Add(intro);
             streak = new StreakControl
@@ -584,6 +585,7 @@ namespace FocoLocal
                 double now = Engine.Stamp(DateTime.UtcNow);
                 UpdateOverview(now);
                 UpdateStreak();
+                UpdateStudy(now);
                 UpdatePendingCount();
                 string query = search.Text.Trim();
                 var rows = VisibleRows(query);
@@ -717,6 +719,39 @@ namespace FocoLocal
                 grid.FirstDisplayedScrollingRowIndex = scroll;
         }
 
+        const string IntroText = "Foco local. Tempo sob controle.";
+
+        double StudyEnd(double now)
+        {
+            return snapshot.rules.Where(r => r.focusUntil > now).Select(r => r.focusUntil).DefaultIfEmpty(0).Max();
+        }
+
+        static string LocalClock(double stamp)
+        {
+            return Engine.Epoch.AddSeconds(stamp).ToLocalTime().ToString("HH:mm");
+        }
+
+        void UpdateStudy(double now)
+        {
+            // An active study session changes what the listed sites allow, so it must be visible at a glance.
+            var studying = snapshot.rules.Where(r => r.focusUntil > now).ToArray();
+            double end = StudyEnd(now);
+            string text = studying.Length == 0 ? IntroText : "Sessão de estudo até " + LocalClock(end) + " · faltam "
+                + PauseDialog.Countdown(end - now) + " · " + (studying.Length == 1 ? studying[0].name : studying.Length + " regras");
+            if (intro.Text != text)
+            {
+                intro.Text = text;
+                tips.SetToolTip(intro, studying.Length == 0 ? "" : string.Join("\n", studying.Select(r => r.name)));
+            }
+
+            Color color = studying.Length == 0 ? Theme.Muted : Theme.Ink;
+            if (intro.ForeColor != color)
+                intro.ForeColor = color;
+            string button = studying.Length == 0 ? "Sessão de estudo" : "Estudo até " + LocalClock(end);
+            if (study.Text != button)
+                study.Text = button;
+        }
+
         void UpdatePauseTitle(double now)
         {
             // While a pause runs, tick every second and show the countdown in the title (visible on the taskbar).
@@ -724,12 +759,13 @@ namespace FocoLocal
                 x.pauseEndsAt).FirstOrDefault();
             if (refresh != null)
             {
-                int interval = active != null ? 1000 : 1500;
+                int interval = active != null || StudyEnd(now) > now ? 1000 : 1500;
                 if (refresh.Interval != interval)
                     refresh.Interval = interval;
             }
 
-            string title = active == null ? "Vigília | Foco local" : "Vigília | " + active.name + (active.pauseStartsAt > now ?
+            string idle = StudyEnd(now) > now ? "Vigília | Estudo até " + LocalClock(StudyEnd(now)) : "Vigília | Foco local";
+            string title = active == null ? idle : "Vigília | " + active.name + (active.pauseStartsAt > now ?
                 " libera em " : " liberado, resta ") + PauseDialog.Countdown((active.pauseStartsAt > now ? active.pauseStartsAt :
                 active.pauseEndsAt) - now);
             if (Text != title)
